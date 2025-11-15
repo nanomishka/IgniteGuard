@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyprus Fire Risk Data Visualization</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        #subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        #container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #map {
+            flex: 1;
+            height: 100%;
+        }
+
+        #info-panel {
+            width: 350px;
+            background: #f8f9fa;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+        }
+
+        #simulation-controls {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            margin-bottom: 15px;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .timeline-container {
+            margin: 15px 0;
+        }
+
+        .timeline-slider {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .timeline-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .mode-selector {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        .mode-selector label {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+
+        .mode-selector input[type="radio"] {
+            margin-right: 8px;
+        }
+
+        .info-section {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .info-section h3 {
+            color: #667eea;
+            font-size: 16px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 5px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .data-row:last-child {
+            border-bottom: none;
+        }
+
+        .data-label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .data-value {
+            color: #212529;
+            font-weight: 500;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .legend {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .legend h4 {
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+        }
+
+        .click-instruction {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #856404;
+        }
+
+        .leaflet-popup-content {
+            margin: 10px;
+            min-width: 200px;
+        }
+
+        .popup-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .popup-value {
+            font-size: 18px;
+            color: #212529;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🔥 Cyprus Fire Risk Data Visualization</h1>
+        <div id="subtitle">Spread Rate, Fuel Dryness & Slope Analysis</div>
+    </div>
+
+    <div id="container">
+        <div id="map"></div>
+        <div id="info-panel">
+            <div id="simulation-controls">
+                <h3 style="color: #667eea; font-size: 16px; margin-bottom: 10px;">🔥 Fire Simulation</h3>
+                
+                <div class="mode-selector">
+                    <label>
+                        <input type="radio" name="mapMode" value="view" checked>
+                        <span>View Data (Click to inspect)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="mapMode" value="simulate">
+                        <span>🔥 Start Fire (Click to ignite)</span>
+                    </label>
+                </div>
+
+                <div class="control-buttons">
+                    <button class="btn btn-success" id="playBtn" disabled>▶ Play</button>
+                    <button class="btn btn-primary" id="pauseBtn" disabled>⏸ Pause</button>
+                    <button class="btn btn-danger" id="clearBtn" disabled>🗑 Clear</button>
+                </div>
+
+                <div class="timeline-container" id="timelineContainer" style="display: none;">
+                    <div class="timeline-info">
+                        <span>Time: <strong id="currentTime">0</strong> hours</span>
+                        <span>Total: <strong id="totalTime">24</strong> hours</span>
+                    </div>
+                    <input type="range" class="timeline-slider" id="timelineSlider" min="0" max="24" value="0" step="1">
+                    <div style="margin-top: 10px; font-size: 12px;">
+                        <div>Burned Area: <strong id="burnedArea">0</strong> km²</div>
+                        <div>Spread Rate: <strong id="spreadRate">0</strong> km/h</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="click-instruction">
+                📍 Select mode above, then click on map
+            </div>
+
+            <div class="info-section">
+                <h3>📊 Statistics</h3>
+                <div id="stats">
+                    <div class="loading">Loading data...</div>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h3>📍 Selected Location</h3>
+                <div id="location-info">
+                    <div class="data-row">
+                        <span class="data-label">Click on map to view data</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-section legend">
+                <h4>🎨 Color Legend</h4>
+                <div id="legend-items"></div>
+            </div>
+
+            <div class="info-section">
+                <h3>ℹ️ About</h3>
+                <p style="font-size: 13px; line-height: 1.6; color: #6c757d;">
+                    This visualization displays fire risk data for Cyprus including spread rate, 
+                    fuel dryness, and slope information. The data is rendered from a GeoTIFF file 
+                    with color-coded risk levels.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
+    
+    <script>
+        // Initialize the map centered on Cyprus
+        const map = L.map('map').setView([35.1264, 33.4299], 9);
+
+        // Add OpenStreetMap base layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(map);
+
+        let georasterLayer;
+        let georaster;
+        let stats = {
+            min: null,
+            max: null,
+            mean: null,
+            count: 0
+        };
+
+        // Fire simulation state
+        let fireSimulation = {
+            active: false,
+            ignitionPoint: null,
+            currentTime: 0,
+            maxTime: 24, // hours
+            playing: false,
+            animationInterval: null,
+            fireMarker: null,
+            fireLayer: null,
+            burnedCells: new Set(),
+            fireFront: [],
+            mapMode: 'view', // 'view' or 'simulate'
+            // Scientific parameters based on IgniteGuard model
+            maxROS: 30, // meters per minute (max ROS for Mediterranean)
+            pixelSizeMeters: null, // calculated from georaster
+            timeStepHours: 1, // simulation time step
+            minSpreadThreshold: 0.01 // minimum spread factor to propagate fire
+        };
+
+        // Color scale function
+        function getColor(value) {
+            if (value === null || value === undefined || isNaN(value)) return 'rgba(128, 128, 128, 0.5)';
+            
+            // Normalize value to 0-1 range based on min/max
+            const normalized = stats.min !== stats.max 
+                ? (value - stats.min) / (stats.max - stats.min)
+                : 0.5;
+
+            // Color gradient from green (low risk) to red (high risk)
+            if (normalized < 0.2) return `rgba(0, 255, 0, 0.7)`;      // Green
+            if (normalized < 0.4) return `rgba(154, 205, 50, 0.7)`;   // Yellow-green
+            if (normalized < 0.6) return `rgba(255, 255, 0, 0.7)`;    // Yellow
+            if (normalized < 0.8) return `rgba(255, 165, 0, 0.7)`;    // Orange
+            return `rgba(255, 0, 0, 0.7)`;                             // Red
+        }
+
+        // Load and display the GeoTIFF
+        async function loadGeoTIFF() {
+            try {
+                const response = await fetch('cyprus_spread_rate_fuel_dryness_slope.tif');
+                const arrayBuffer = await response.arrayBuffer();
+                
+                georaster = await parseGeoraster(arrayBuffer);
+                console.log('GeoRaster loaded:', georaster);
+
+                // Calculate statistics
+                const values = georaster.values[0].flat().filter(v => v !== null && !isNaN(v) && v !== georaster.noDataValue);
+                
+                if (values.length > 0) {
+                    stats.min = Math.min(...values);
+                    stats.max = Math.max(...values);
+                    stats.mean = values.reduce((a, b) => a + b, 0) / values.length;
+                    stats.count = values.length;
+                }
+
+                // Update statistics display
+                document.getElementById('stats').innerHTML = `
+                    <div class="data-row">
+                        <span class="data-label">Min Value:</span>
+                        <span class="data-value">${stats.min?.toFixed(2) || 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Max Value:</span>
+                        <span class="data-value">${stats.max?.toFixed(2) || 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Mean Value:</span>
+                        <span class="data-value">${stats.mean?.toFixed(2) || 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Data Points:</span>
+                        <span class="data-value">${stats.count.toLocaleString()}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Resolution:</span>
+                        <span class="data-value">${georaster.width} × ${georaster.height}</span>
+                    </div>
+                `;
+
+                // Create legend
+                createLegend();
+
+                // Create the layer with custom rendering
+                georasterLayer = new GeoRasterLayer({
+                    georaster: georaster,
+                    opacity: 0.7,
+                    pixelValuesToColorFn: values => {
+                        const value = values[0];
+                        return getColor(value);
+                    },
+                    resolution: 256
+                });
+
+                georasterLayer.addTo(map);
+
+                // Fit map bounds to the raster
+                const bounds = [
+                    [georaster.ymin, georaster.xmin],
+                    [georaster.ymax, georaster.xmax]
+                ];
+                map.fitBounds(bounds);
+
+            } catch (error) {
+                console.error('Error loading GeoTIFF:', error);
+                document.getElementById('stats').innerHTML = `
+                    <div style="color: #dc3545; padding: 10px;">
+                        Error loading data: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function createLegend() {
+            const legendItems = document.getElementById('legend-items');
+            const ranges = [
+                { label: 'Very Low', color: 'rgba(0, 255, 0, 0.7)', range: '0-20%' },
+                { label: 'Low', color: 'rgba(154, 205, 50, 0.7)', range: '20-40%' },
+                { label: 'Medium', color: 'rgba(255, 255, 0, 0.7)', range: '40-60%' },
+                { label: 'High', color: 'rgba(255, 165, 0, 0.7)', range: '60-80%' },
+                { label: 'Very High', color: 'rgba(255, 0, 0, 0.7)', range: '80-100%' }
+            ];
+
+            legendItems.innerHTML = ranges.map(item => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${item.color};"></div>
+                    <div>
+                        <strong>${item.label}</strong><br>
+                        <small style="color: #6c757d;">${item.range}</small>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Fire simulation functions
+        function initializeFire(lat, lng) {
+            clearFireSimulation();
+            
+            const x = Math.floor((lng - georaster.xmin) / georaster.pixelWidth);
+            const y = Math.floor((georaster.ymax - lat) / georaster.pixelHeight);
+
+            if (x < 0 || x >= georaster.width || y < 0 || y >= georaster.height) {
+                alert('Please click within the data bounds');
+                return;
+            }
+
+            // Check if location has valid data (not water/zero value)
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                alert('Cannot start fire on water or areas with no fuel. Please select a location with vegetation.');
+                return;
+            }
+
+            // Calculate pixel size in meters (approximate)
+            // At Cyprus latitude (~35°), 1 degree ≈ 111 km
+            const latMetersPerDegree = 111000;
+            const lngMetersPerDegree = 111000 * Math.cos(lat * Math.PI / 180);
+            fireSimulation.pixelSizeMeters = Math.sqrt(
+                (georaster.pixelWidth * lngMetersPerDegree) ** 2 +
+                (georaster.pixelHeight * latMetersPerDegree) ** 2
+            );
+
+            fireSimulation.active = true;
+            fireSimulation.ignitionPoint = { lat, lng, x, y };
+            fireSimulation.currentTime = 0;
+            fireSimulation.burnedCells.clear();
+            fireSimulation.fireFront = [{ x, y, time: 0 }];
+
+            // Create fire layer
+            if (fireSimulation.fireLayer) {
+                map.removeLayer(fireSimulation.fireLayer);
+            }
+            fireSimulation.fireLayer = L.layerGroup().addTo(map);
+
+            // Add ignition marker
+            const fireIcon = L.divIcon({
+                className: 'fire-marker',
+                html: '<div style="background: red; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px red;"></div>',
+                iconSize: [20, 20]
+            });
+            fireSimulation.fireMarker = L.marker([lat, lng], { icon: fireIcon }).addTo(fireSimulation.fireLayer);
+
+            // Enable controls
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('clearBtn').disabled = false;
+            document.getElementById('timelineContainer').style.display = 'block';
+            document.getElementById('timelineSlider').value = 0;
+            document.getElementById('currentTime').textContent = '0';
+
+            updateFireVisualization(0);
+        }
+
+        function calculateROS(spreadFactor) {
+            // IgniteGuard ROS Model: ROS = SF_norm × 30 m/min
+            // SF is already normalized in the data (0-1 range expected)
+            // Cap spread factor at reasonable maximum
+            const cappedSF = Math.min(spreadFactor, 1.0);
+            return cappedSF * fireSimulation.maxROS; // meters per minute
+        }
+
+        function calculateSpreadDistance(ros, timeHours) {
+            // Convert ROS (m/min) to distance traveled in given time
+            const timeMinutes = timeHours * 60;
+            return ros * timeMinutes; // meters
+        }
+
+        function canCellBurn(x, y) {
+            // Check if cell is within bounds
+            if (x < 0 || x >= georaster.width || y < 0 || y >= georaster.height) {
+                return false;
+            }
+            
+            // Check if already burned
+            if (fireSimulation.burnedCells.has(`${x},${y}`)) {
+                return false;
+            }
+            
+            // Check if cell has valid fuel (not water/zero)
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                return false;
+            }
+            
+            return true;
+        }
+
+        function getCellSpreadFactor(x, y) {
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                return 0;
+            }
+            
+            const spreadFactor = stats.min !== stats.max 
+                ? (value - stats.min) / (stats.max - stats.min)
+                : 0.5;
+            
+            return Math.max(0, spreadFactor);
+        }
+
+        function hasPathToCell(fromX, fromY, toX, toY) {
+            // Check if there's a valid path (no water barriers) between cells
+            // Use Bresenham's line algorithm to check all cells along the path
+            const dx = Math.abs(toX - fromX);
+            const dy = Math.abs(toY - fromY);
+            const sx = fromX < toX ? 1 : -1;
+            const sy = fromY < toY ? 1 : -1;
+            let err = dx - dy;
+            
+            let x = fromX;
+            let y = fromY;
+            
+            while (true) {
+                // Check if current cell in path has fuel
+                const value = georaster.values[0][y]?.[x];
+                if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                    return false; // Water/barrier blocks the path
+                }
+                
+                if (x === toX && y === toY) break;
+                
+                const e2 = 2 * err;
+                if (e2 > -dy) {
+                    err -= dy;
+                    x += sx;
+                }
+                if (e2 < dx) {
+                    err += dx;
+                    y += sy;
+                }
+            }
+            
+            return true;
+        }
+
+        function simulateFireStep() {
+            if (!fireSimulation.active || fireSimulation.fireFront.length === 0) {
+                stopFireAnimation();
+                return;
+            }
+
+            fireSimulation.currentTime += fireSimulation.timeStepHours;
+            const newFrontSet = new Map(); // Use Map to avoid duplicates and store best ROS
+
+            // Process each cell in the fire front
+            for (const cell of fireSimulation.fireFront) {
+                const { x, y } = cell;
+                const cellKey = `${x},${y}`;
+                
+                // Mark current cell as burned
+                if (!fireSimulation.burnedCells.has(cellKey)) {
+                    const value = georaster.values[0][y]?.[x];
+                    // Only burn if it has fuel
+                    if (value && value !== georaster.noDataValue && !isNaN(value) && value > 0) {
+                        fireSimulation.burnedCells.add(cellKey);
+                    } else {
+                        continue; // Skip if no fuel
+                    }
+                }
+
+                const spreadFactor = getCellSpreadFactor(x, y);
+                
+                // Skip if spread factor is too low (no fuel)
+                if (spreadFactor < fireSimulation.minSpreadThreshold) continue;
+
+                // Calculate Rate of Spread (ROS) in meters per minute
+                const ros = calculateROS(spreadFactor);
+                
+                // Calculate how far fire can spread in this time step
+                const spreadDistanceMeters = calculateSpreadDistance(ros, fireSimulation.timeStepHours);
+                
+                // Convert to number of cells
+                const spreadRadiusCells = Math.ceil(spreadDistanceMeters / fireSimulation.pixelSizeMeters);
+                const maxSearchRadius = Math.min(spreadRadiusCells, 8); // Cap at 8 cells for performance
+
+                // Only check adjacent and diagonal neighbors first for better performance
+                const neighbors = [
+                    [-1, -1], [-1, 0], [-1, 1],
+                    [0, -1],           [0, 1],
+                    [1, -1],  [1, 0],  [1, 1]
+                ];
+
+                // Check immediate neighbors first
+                for (const [dx, dy] of neighbors) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    const nKey = `${nx},${ny}`;
+
+                    if (!canCellBurn(nx, ny)) continue;
+
+                    const cellDistance = Math.sqrt(dx * dx + dy * dy);
+                    const distanceMeters = cellDistance * fireSimulation.pixelSizeMeters;
+
+                    if (distanceMeters <= spreadDistanceMeters) {
+                        const neighborSF = getCellSpreadFactor(nx, ny);
+                        
+                        if (neighborSF >= fireSimulation.minSpreadThreshold) {
+                            const neighborROS = calculateROS(neighborSF);
+                            
+                            // Store the best (highest) ROS for this cell
+                            if (!newFrontSet.has(nKey) || newFrontSet.get(nKey).ros < neighborROS) {
+                                newFrontSet.set(nKey, { 
+                                    x: nx, 
+                                    y: ny, 
+                                    time: fireSimulation.currentTime,
+                                    ros: neighborROS
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // For longer-range spread, check if path is clear
+                if (spreadRadiusCells > 2) {
+                    for (let dx = -maxSearchRadius; dx <= maxSearchRadius; dx++) {
+                        for (let dy = -maxSearchRadius; dy <= maxSearchRadius; dy++) {
+                            // Skip already checked immediate neighbors
+                            if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) continue;
+                            
+                            const nx = x + dx;
+                            const ny = y + dy;
+                            const nKey = `${nx},${ny}`;
+
+                            if (!canCellBurn(nx, ny)) continue;
+
+                            const cellDistance = Math.sqrt(dx * dx + dy * dy);
+                            const distanceMeters = cellDistance * fireSimulation.pixelSizeMeters;
+
+                            if (distanceMeters <= spreadDistanceMeters) {
+                                // Check if there's a valid path (no water barriers)
+                                if (!hasPathToCell(x, y, nx, ny)) continue;
+
+                                const neighborSF = getCellSpreadFactor(nx, ny);
+                                
+                                if (neighborSF >= fireSimulation.minSpreadThreshold) {
+                                    const neighborROS = calculateROS(neighborSF);
+                                    
+                                    // Add some randomness for longer distances
+                                    const spreadChance = 0.7 + Math.random() * 0.3;
+                                    if (spreadChance > 0.6) {
+                                        if (!newFrontSet.has(nKey) || newFrontSet.get(nKey).ros < neighborROS) {
+                                            newFrontSet.set(nKey, { 
+                                                x: nx, 
+                                                y: ny, 
+                                                time: fireSimulation.currentTime,
+                                                ros: neighborROS
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Convert Map to Array for next iteration
+            fireSimulation.fireFront = Array.from(newFrontSet.values());
+            updateFireVisualization(fireSimulation.currentTime);
+
+            if (fireSimulation.currentTime >= fireSimulation.maxTime || fireSimulation.fireFront.length === 0) {
+                stopFireAnimation();
+            }
+        }
+
+        function updateFireVisualization(time) {
+            if (!fireSimulation.fireLayer) return;
+
+            // Clear previous fire visualization (except marker)
+            fireSimulation.fireLayer.eachLayer(layer => {
+                if (layer !== fireSimulation.fireMarker) {
+                    fireSimulation.fireLayer.removeLayer(layer);
+                }
+            });
+
+            // Draw burned area
+            const burnedPolygons = [];
+            fireSimulation.burnedCells.forEach(cellKey => {
+                const [x, y] = cellKey.split(',').map(Number);
+                
+                const lng1 = georaster.xmin + x * georaster.pixelWidth;
+                const lng2 = lng1 + georaster.pixelWidth;
+                const lat1 = georaster.ymax - y * georaster.pixelHeight;
+                const lat2 = lat1 - georaster.pixelHeight;
+
+                const bounds = [[lat2, lng1], [lat1, lng2]];
+                
+                const intensity = 0.3 + Math.random() * 0.4;
+                L.rectangle(bounds, {
+                    color: '#ff4500',
+                    weight: 0,
+                    fillColor: '#ff4500',
+                    fillOpacity: intensity
+                }).addTo(fireSimulation.fireLayer);
+            });
+
+            // Update statistics
+            // Calculate burned area in km²
+            const pixelAreaDegrees = georaster.pixelWidth * georaster.pixelHeight;
+            // Convert from degrees² to km² (at Cyprus latitude ~35°)
+            const degToKm = 111; // km per degree latitude
+            const approxAreaKm2 = (fireSimulation.burnedCells.size * pixelAreaDegrees * degToKm * degToKm).toFixed(2);
+            
+            // Calculate average ROS in m/min then convert to km/h for display
+            const avgSpreadRate = time > 0 ? ((parseFloat(approxAreaKm2) / time) * 60 / 1000).toFixed(3) : '0.000';
+
+            document.getElementById('currentTime').textContent = time;
+            document.getElementById('timelineSlider').value = time;
+            document.getElementById('burnedArea').textContent = approxAreaKm2;
+            document.getElementById('spreadRate').textContent = avgSpreadRate;
+        }
+
+        function playFireAnimation() {
+            if (fireSimulation.playing) return;
+            
+            fireSimulation.playing = true;
+            document.getElementById('playBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = false;
+
+            fireSimulation.animationInterval = setInterval(() => {
+                simulateFireStep();
+            }, 500); // 500ms per hour
+        }
+
+        function stopFireAnimation() {
+            fireSimulation.playing = false;
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            
+            if (fireSimulation.animationInterval) {
+                clearInterval(fireSimulation.animationInterval);
+                fireSimulation.animationInterval = null;
+            }
+        }
+
+        function clearFireSimulation() {
+            stopFireAnimation();
+            
+            if (fireSimulation.fireLayer) {
+                map.removeLayer(fireSimulation.fireLayer);
+                fireSimulation.fireLayer = null;
+            }
+
+            fireSimulation.active = false;
+            fireSimulation.ignitionPoint = null;
+            fireSimulation.currentTime = 0;
+            fireSimulation.burnedCells.clear();
+            fireSimulation.fireFront = [];
+            fireSimulation.fireMarker = null;
+
+            document.getElementById('playBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = true;
+            document.getElementById('clearBtn').disabled = true;
+            document.getElementById('timelineContainer').style.display = 'none';
+        }
+
+        // Event listeners for controls
+        document.getElementById('playBtn').addEventListener('click', playFireAnimation);
+        document.getElementById('pauseBtn').addEventListener('click', stopFireAnimation);
+        document.getElementById('clearBtn').addEventListener('click', clearFireSimulation);
+
+        document.getElementById('timelineSlider').addEventListener('input', (e) => {
+            const targetTime = parseInt(e.target.value);
+            
+            if (targetTime < fireSimulation.currentTime) {
+                // Reset and replay to target time
+                const ignition = fireSimulation.ignitionPoint;
+                if (ignition) {
+                    initializeFire(ignition.lat, ignition.lng);
+                    for (let i = 0; i < targetTime; i++) {
+                        simulateFireStep();
+                    }
+                }
+            } else {
+                // Advance to target time
+                while (fireSimulation.currentTime < targetTime && fireSimulation.fireFront.length > 0) {
+                    simulateFireStep();
+                }
+            }
+        });
+
+        // Mode selector
+        document.querySelectorAll('input[name="mapMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                fireSimulation.mapMode = e.target.value;
+                map.getContainer().style.cursor = e.target.value === 'simulate' ? 'crosshair' : '';
+            });
+        });
+
+        // Handle map clicks
+        map.on('click', function(e) {
+            if (!georaster) return;
+
+            const { lat, lng } = e.latlng;
+
+            if (fireSimulation.mapMode === 'simulate') {
+                initializeFire(lat, lng);
+                return;
+            }
+
+            // View mode - show pixel values
+            const x = Math.floor((lng - georaster.xmin) / georaster.pixelWidth);
+            const y = Math.floor((georaster.ymax - lat) / georaster.pixelHeight);
+
+            if (x >= 0 && x < georaster.width && y >= 0 && y < georaster.height) {
+                const value = georaster.values[0][y][x];
+                
+                if (value !== null && value !== georaster.noDataValue && !isNaN(value)) {
+                    const normalized = stats.min !== stats.max 
+                        ? ((value - stats.min) / (stats.max - stats.min) * 100).toFixed(1)
+                        : 50;
+
+                    // Update info panel
+                    document.getElementById('location-info').innerHTML = `
+                        <div class="data-row">
+                            <span class="data-label">Latitude:</span>
+                            <span class="data-value">${lat.toFixed(6)}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Longitude:</span>
+                            <span class="data-value">${lng.toFixed(6)}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Pixel X:</span>
+                            <span class="data-value">${x}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Pixel Y:</span>
+                            <span class="data-value">${y}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Raw Value:</span>
+                            <span class="data-value">${value.toFixed(4)}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Risk Level:</span>
+                            <span class="data-value">${normalized}%</span>
+                        </div>
+                    `;
+
+                    // Show popup on map
+                    L.popup()
+                        .setLatLng(e.latlng)
+                        .setContent(`
+                            <div class="popup-title">Fire Risk Data</div>
+                            <div class="popup-value">Value: ${value.toFixed(4)}</div>
+                            <div style="margin-top: 5px;">Risk Level: ${normalized}%</div>
+                        `)
+                        .openOn(map);
+                } else {
+                    document.getElementById('location-info').innerHTML = `
+                        <div class="data-row">
+                            <span class="data-label">No data at this location</span>
+                        </div>
+                    `;
+                }
+            }
+        });
+
+        // Load the GeoTIFF when page loads
+        loadGeoTIFF();
+    </script>
+</body>
+</html>
