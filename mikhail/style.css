@@ -277,6 +277,26 @@ header p {
     white-space: nowrap;
 }
 
+.fire-area-info {
+    margin-top: 15px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 5px;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.area-label {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #cc0000;
+}
+
+#fireAreaDisplay {
+    color: #cc0000;
+    font-weight: bold;
+}
+
 .timeline-slider:disabled {
     opacity: 0.5;
     cursor: not-allowed;

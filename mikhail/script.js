@@ -101,11 +101,22 @@ let gridSquares = [];
 let originalSquareColors = new Map();
 let squareBounds = new Map();
 let fireLinePoints = null; // Линия огня (нарисованная пользователем)
-let squareFireState = new Map(); // Состояние каждого квадрата: null - не затронут, number - время начала горения (часы)
+let squareFireState = new Map(); // Состояние каждого квадрата: null - не затронут, number - время начала горения
 let squareCurrentColor = new Map(); // Текущий цвет каждого квадрата для кэширования
-let currentTime = 0; // Текущее время в часах
-let precalculatedFireStates = new Map(); // Предрасчитанные состояния огня для каждого часа: Map<time, Map<squareIndex, fireStartTime>>
-let isPrecalculating = false; // Флаг предрасчета
+let currentTime = 0; // Текущее время в минутах
+let fireSimulator = null; // Симулятор распространения огня
+let gridDataWithBurnTime = null; // Данные с временем горения
+const CELL_SIZE_M = 10; // Размер ячейки в метрах (10x10 метров)
+const CELL_AREA_M2 = CELL_SIZE_M * CELL_SIZE_M; // Площадь одной ячейки в квадратных метрах (100 м²)
+
+function formatFireArea(areaM2) {
+    if (areaM2 < 1000) {
+        return areaM2.toLocaleString('ru-RU') + ' м²';
+    } else {
+        const areaKm2 = areaM2 / 1000000;
+        return areaKm2.toFixed(2).replace('.', ',') + ' км²';
+    }
+}
 
 // Function to check if a point is inside a polygon using ray casting algorithm
 function isPointInPolygon(point, latlngs) {
@@ -254,6 +265,18 @@ function loadGridFromFile() {
         });
 }
 
+// Function to load grid with burn time from file
+function loadGridWithBurnTime() {
+    return fetch('grid_data_with_burn_time.json')
+        .then(response => {
+            if (!response.ok) {
+                console.warn('grid_data_with_burn_time.json not found, using grid_data.json');
+                return null;
+            }
+            return response.json();
+        });
+}
+
 // Function to create grid squares from loaded data
 function createGridSquaresFromData(gridData) {
     if (!gridLayer) {
@@ -263,10 +286,26 @@ function createGridSquaresFromData(gridData) {
     let transparentCount = 0;
     
     for (let item of gridData) {
+        const fireRate = item.fire_rate !== undefined ? item.fire_rate : 0;
+        
+        let r, g, b, opacity;
+        if (fireRate === 0) {
+            r = 255;
+            g = 192;
+            b = 203;
+            opacity = 0;
+        } else {
+            const normalizedRate = fireRate / 30;
+            r = Math.round(255 - normalizedRate * 117);
+            g = Math.round(192 - normalizedRate * 149);
+            b = Math.round(203 + normalizedRate * 23);
+            opacity = normalizedRate * 0.5;
+        }
+        
         const square = L.rectangle(item.bounds, {
             color: 'transparent',
-            fillColor: `rgb(${item.color.r}, ${item.color.g}, ${item.color.b})`,
-            fillOpacity: item.opacity,
+            fillColor: `rgb(${r}, ${g}, ${b})`,
+            fillOpacity: opacity,
             weight: 0,
             interactive: false
         });
@@ -286,14 +325,13 @@ function createGridSquaresFromData(gridData) {
         
         squareBounds.set(square, bounds);
         
-        const opacityValue = typeof item.opacity === 'number' ? item.opacity : parseFloat(item.opacity);
-        if (opacityValue === 0 || (Math.abs(opacityValue) < 0.0001)) {
+        if (opacity === 0 || (Math.abs(opacity) < 0.0001)) {
             transparentCount++;
         }
         
         originalSquareColors.set(square, {
-            fillColor: `rgb(${item.color.r}, ${item.color.g}, ${item.color.b})`,
-            fillOpacity: opacityValue
+            fillColor: `rgb(${r}, ${g}, ${b})`,
+            fillOpacity: opacity
         });
     }
     
@@ -303,12 +341,15 @@ function createGridSquaresFromData(gridData) {
 function createGridSquares() {
     if (!cyprusBorder || gridLayer) return;
     
-    loadGridFromFile()
-        .then(gridData => {
+    Promise.all([loadGridFromFile(), loadGridWithBurnTime()])
+        .then(([gridData, burnTimeData]) => {
             createGridSquaresFromData(gridData);
+            if (burnTimeData) {
+                gridDataWithBurnTime = burnTimeData;
+            }
         })
         .catch(error => {
-            console.warn('Could not load grid_data.json. Please generate it using generate_grid.html', error);
+            console.warn('Could not load grid data files. Please generate them using generate_grid.html', error);
         });
 }
 
@@ -466,21 +507,23 @@ function highlightSquaresInArea(linePoints) {
         return;
     }
     
-    // Сохраняем линию огня для дальнейшего использования в timeline
+    // Сохраняем линию огня
     fireLinePoints = linePoints;
     squareFireState.clear();
-    squareCurrentColor.clear(); // Очищаем кэш цветов
-    precalculatedFireStates.clear(); // Очищаем предрасчет
+    squareCurrentColor.clear();
     currentTime = 0;
     
-    // Показываем timeline и делаем его неактивным для предрасчета
-    if (timelineContainer && timelineSlider) {
-        timelineContainer.style.display = 'block';
-        timelineSlider.disabled = true;
-        timelineContainer.classList.add('disabled');
+    // Инициализируем симулятор распространения огня
+    if (gridDataWithBurnTime) {
+        fireSimulator = new FireSpreadSimulator(gridDataWithBurnTime, linePoints);
     }
     
-    // Предрасчет запустится асинхронно после закраски
+    // Показываем timeline
+    if (timelineContainer && timelineSlider) {
+        timelineContainer.style.display = 'block';
+        timelineSlider.disabled = false;
+        timelineContainer.classList.remove('disabled');
+    }
     
     const closedPolygon = [...linePoints];
     if (closedPolygon.length > 0 && 
@@ -497,6 +540,7 @@ function highlightSquaresInArea(linePoints) {
     );
     
     let highlightedCount = 0;
+    let initialFireArea = 0;
     
     for (let i = 0; i < gridSquares.length; i++) {
         let square = gridSquares[i];
@@ -566,447 +610,18 @@ function highlightSquaresInArea(linePoints) {
             gridSquares[i] = newSquare;
             newSquare.bringToFront();
             highlightedCount++;
+            initialFireArea += CELL_AREA_M2;
         }
     }
     
-    // Запускаем предрасчет асинхронно в фоне после закраски
-    // Используем requestIdleCallback для выполнения в свободное время браузера
-    if (window.requestIdleCallback) {
-        requestIdleCallback(() => {
-            precalculateFireSpread();
-        }, { timeout: 1000 });
-    } else {
+    if (fireAreaDisplay) {
+        fireAreaDisplay.textContent = formatFireArea(initialFireArea);
+    }
+    
+    if (fireSimulator && gridDataWithBurnTime) {
         setTimeout(() => {
-            precalculateFireSpread();
-        }, 100);
-    }
-}
-
-// Функция для проверки, соприкасаются ли два квадрата (стороной или углом)
-function squaresTouch(bounds1, bounds2) {
-    const sw1 = bounds1.getSouthWest();
-    const ne1 = bounds1.getNorthEast();
-    const sw2 = bounds2.getSouthWest();
-    const ne2 = bounds2.getNorthEast();
-    
-    const epsilon = 1e-6;
-    
-    const minLat1 = Math.min(sw1.lat, ne1.lat);
-    const maxLat1 = Math.max(sw1.lat, ne1.lat);
-    const minLng1 = Math.min(sw1.lng, ne1.lng);
-    const maxLng1 = Math.max(sw1.lng, ne1.lng);
-    
-    const minLat2 = Math.min(sw2.lat, ne2.lat);
-    const maxLat2 = Math.max(sw2.lat, ne2.lat);
-    const minLng2 = Math.min(sw2.lng, ne2.lng);
-    const maxLng2 = Math.max(sw2.lng, ne2.lng);
-    
-    const latOverlap = !(maxLat1 < minLat2 - epsilon || minLat1 > maxLat2 + epsilon);
-    const lngOverlap = !(maxLng1 < minLng2 - epsilon || minLng1 > maxLng2 + epsilon);
-    
-    if (latOverlap && lngOverlap) {
-        return true;
-    }
-    
-    const latAdjacent = (
-        (Math.abs(maxLat1 - minLat2) < epsilon || Math.abs(minLat1 - maxLat2) < epsilon)
-    ) && lngOverlap;
-    
-    const lngAdjacent = (
-        (Math.abs(maxLng1 - minLng2) < epsilon || Math.abs(minLng1 - maxLng2) < epsilon)
-    ) && latOverlap;
-    
-    const cornerTouch = 
-        (Math.abs(maxLat1 - minLat2) < epsilon && Math.abs(maxLng1 - minLng2) < epsilon) ||
-        (Math.abs(maxLat1 - minLat2) < epsilon && Math.abs(minLng1 - maxLng2) < epsilon) ||
-        (Math.abs(minLat1 - maxLat2) < epsilon && Math.abs(maxLng1 - minLng2) < epsilon) ||
-        (Math.abs(minLat1 - maxLat2) < epsilon && Math.abs(minLng1 - maxLng2) < epsilon);
-    
-    return latAdjacent || lngAdjacent || cornerTouch;
-}
-
-// Функция предрасчета распространения огня для всех часов (0-3)
-// Вычисляет состояние огня заранее и сохраняет в памяти
-function precalculateFireSpread() {
-    if (!fireLinePoints || fireLinePoints.length < 3) {
-        return;
-    }
-    
-    isPrecalculating = true;
-    precalculatedFireStates.clear();
-    
-    // Делаем timeline неактивным до завершения предрасчета
-    const timelineContainer = document.querySelector('.timeline-container');
-    const timelineSlider = document.getElementById('timelineSlider');
-    if (timelineContainer && timelineSlider) {
-        timelineSlider.disabled = true;
-        timelineContainer.classList.add('disabled');
-    }
-    
-    const closedPolygon = [...fireLinePoints];
-    if (closedPolygon.length > 0 && 
-        (closedPolygon[0].lat !== closedPolygon[closedPolygon.length - 1].lat || 
-         closedPolygon[0].lng !== closedPolygon[closedPolygon.length - 1].lng)) {
-        closedPolygon.push(closedPolygon[0]);
-    }
-    
-    // Собираем все квадраты карты
-    const allSquares = [];
-    for (let i = 0; i < gridSquares.length; i++) {
-        let square = gridSquares[i];
-        let bounds = squareBounds.get(square);
-        
-        if (!bounds || !bounds.isValid()) {
-            continue;
-        }
-        
-        allSquares.push({ index: i, bounds: bounds });
-    }
-    
-    // Инициализируем состояние для времени 0 (квадраты на линии огня)
-    const initialState = new Map();
-    for (let squareInfo of allSquares) {
-        const i = squareInfo.index;
-        const bounds = squareInfo.bounds;
-        const intersectsLine = lineIntersectsRectangle(fireLinePoints, bounds);
-        if (intersectsLine) {
-            initialState.set(i, 0); // Квадраты на линии горят с начала
-        }
-    }
-    precalculatedFireStates.set(0, new Map(initialState));
-    
-    // Предрасчитываем для каждого часа (1, 2, 3, 4, 5, 6) асинхронно
-    // Разбиваем на части, чтобы не блокировать UI
-    let currentTime = 1;
-    
-    function calculateNextHour() {
-        if (currentTime > 6) {
-            isPrecalculating = false;
-            
-            // Активируем timeline после завершения предрасчета
-            const timelineContainer = document.querySelector('.timeline-container');
-            const timelineSlider = document.getElementById('timelineSlider');
-            if (timelineContainer && timelineSlider) {
-                timelineSlider.disabled = false;
-                timelineContainer.classList.remove('disabled');
-            }
-            return;
-        }
-        
-        const time = currentTime;
-        const previousState = precalculatedFireStates.get(time - 1);
-        const currentState = new Map(previousState);
-        
-        // Собираем горящие квадраты из предыдущего состояния
-        const burningSquares = [];
-        for (let squareInfo of allSquares) {
-            const i = squareInfo.index;
-            const fireStartTime = previousState.get(i);
-            if (fireStartTime !== undefined && fireStartTime < time) {
-                burningSquares.push(squareInfo);
-            }
-        }
-        
-        // Для каждого горящего квадрата находим соседние и зажигаем их
-        for (let burningSquare of burningSquares) {
-            const burningIndex = burningSquare.index;
-            const burningBounds = burningSquare.bounds;
-            const burningFireStartTime = previousState.get(burningIndex);
-            const burningCenter = burningBounds.getCenter();
-            const burningIsInside = isPointInPolygon(burningCenter, closedPolygon);
-            const burningIntersectsLine = lineIntersectsRectangle(fireLinePoints, burningBounds);
-            
-            if (!burningIntersectsLine && burningIsInside) {
-                continue; // Пропускаем квадраты внутри области
-            }
-            
-            const searchRadius = 0.002;
-            
-            for (let squareInfo of allSquares) {
-                const i = squareInfo.index;
-                const bounds = squareInfo.bounds;
-                const center = bounds.getCenter();
-                
-                const latDiff = Math.abs(center.lat - burningCenter.lat);
-                const lngDiff = Math.abs(center.lng - burningCenter.lng);
-                if (latDiff > searchRadius || lngDiff > searchRadius) {
-                    continue;
-                }
-                
-                const isInside = isPointInPolygon(center, closedPolygon);
-                const fireStartTime = currentState.get(i);
-                
-                if (fireStartTime === undefined && !isInside) {
-                    if (squaresTouch(bounds, burningBounds)) {
-                        const newFireStartTime = burningFireStartTime + 1;
-                        if (newFireStartTime <= time) {
-                            currentState.set(i, newFireStartTime);
-                        }
-                    }
-                }
-            }
-        }
-        
-        precalculatedFireStates.set(time, currentState);
-        currentTime++;
-        
-        // Продолжаем расчет следующего часа асинхронно
-        if (window.requestIdleCallback) {
-            requestIdleCallback(calculateNextHour, { timeout: 100 });
-        } else {
-            setTimeout(calculateNextHour, 10);
-        }
-    }
-    
-    // Начинаем расчет с первого часа
-    if (window.requestIdleCallback) {
-        requestIdleCallback(calculateNextHour, { timeout: 100 });
-    } else {
-        setTimeout(calculateNextHour, 10);
-    }
-}
-
-// Функция для обновления визуализации на основе предрасчитанных данных
-// Использует готовые данные из памяти, без вычислений
-function updateFireSpread(time) {
-    if (!fireLinePoints || fireLinePoints.length < 3) {
-        return;
-    }
-    
-    // Если еще идет предрасчет, ждем
-    if (isPrecalculating) {
-        return;
-    }
-    
-    // Используем предрасчитанные данные
-    const fireState = precalculatedFireStates.get(time);
-    if (!fireState) {
-        return;
-    }
-    
-    currentTime = time;
-    
-    // Собираем все квадраты, которые когда-либо горели до текущего времени
-    // Это нужно, чтобы выгоревшие квадраты оставались серыми во все последующие часы
-    squareFireState = new Map();
-    for (let t = 0; t <= time; t++) {
-        const stateAtTime = precalculatedFireStates.get(t);
-        if (stateAtTime) {
-            // Добавляем все квадраты, которые горели в момент времени t
-            for (let [squareIndex, fireStartTime] of stateAtTime) {
-                // Если квадрат еще не добавлен или его время начала горения раньше, обновляем
-                if (!squareFireState.has(squareIndex) || squareFireState.get(squareIndex) > fireStartTime) {
-                    squareFireState.set(squareIndex, fireStartTime);
-                }
-            }
-        }
-    }
-    
-    // Убеждаемся, что красная линия огня видна и обновлена
-    if (drawPolyline) {
-        const closedPoints = [...fireLinePoints, fireLinePoints[0]];
-        drawPolyline.setLatLngs(closedPoints);
-        drawPolyline.bringToFront();
-    } else if (fireLinePoints && fireLinePoints.length >= 3) {
-        const closedPoints = [...fireLinePoints, fireLinePoints[0]];
-        drawPolyline = L.polyline(closedPoints, {
-            color: '#ff0000',
-            weight: 3,
-            opacity: 1,
-            renderer: L.canvas({ padding: 0.5 })
-        }).addTo(map);
-        drawPolyline.bringToFront();
-    }
-    
-    const closedPolygon = [...fireLinePoints];
-    if (closedPolygon.length > 0 && 
-        (closedPolygon[0].lat !== closedPolygon[closedPolygon.length - 1].lat || 
-         closedPolygon[0].lng !== closedPolygon[closedPolygon.length - 1].lng)) {
-        closedPolygon.push(closedPolygon[0]);
-    }
-    
-    // Собираем все квадраты для обновления визуализации
-    const allSquares = [];
-    for (let i = 0; i < gridSquares.length; i++) {
-        let square = gridSquares[i];
-        let bounds = squareBounds.get(square);
-        
-        if (!bounds || !bounds.isValid()) {
-            continue;
-        }
-        
-        allSquares.push({ index: i, bounds: bounds });
-    }
-    
-    // Обновляем визуализацию только тех квадратов, которые изменили состояние
-    const squaresToUpdate = new Set();
-    
-    // Собираем все квадраты, которые нужно обновить
-    // ВАЖНО: Включаем ВСЕ квадраты внутри области и все квадраты, которые горели когда-либо
-    for (let squareInfo of allSquares) {
-        const i = squareInfo.index;
-        const bounds = squareInfo.bounds;
-        const center = bounds.getCenter();
-        
-        // Проверяем, находится ли центр квадрата внутри области
-        const isInside = isPointInPolygon(center, closedPolygon);
-        
-        const fireStartTime = squareFireState.get(i);
-        
-        // ВАЖНО: Включаем ВСЕ квадраты внутри области, независимо от состояния огня
-        // Также включаем квадраты, которые горели когда-либо
-        if (isInside) {
-            // Квадрат внутри области - ВСЕГДА должен быть серым
-            squaresToUpdate.add(i);
-        }
-        if (fireStartTime !== undefined) {
-            // Квадрат горел когда-либо - включаем для обновления
-            squaresToUpdate.add(i);
-        }
-    }
-    
-    // Обновляем только измененные квадраты
-    for (let i of squaresToUpdate) {
-        let bounds = squareBounds.get(gridSquares[i]);
-        if (!bounds) {
-            try {
-                bounds = gridSquares[i].getBounds();
-                if (bounds && bounds.isValid()) {
-                    squareBounds.set(gridSquares[i], bounds);
-                } else {
-                    continue;
-                }
-            } catch (e) {
-                continue;
-            }
-        }
-        
-        if (!bounds || !bounds.isValid()) {
-            continue;
-        }
-        
-        const center = bounds.getCenter();
-        
-        // ВАЖНО: Проверяем, находится ли центр квадрата внутри области
-        // Проверяем каждый раз заново для каждого квадрата
-        const isInside = isPointInPolygon(center, closedPolygon);
-        
-        const fireStartTime = squareFireState.get(i);
-        const original = originalSquareColors.get(gridSquares[i]);
-        
-        try {
-            if (map.hasLayer(gridSquares[i])) {
-                gridLayer.removeLayer(gridSquares[i]);
-            }
-        } catch (e) {
-        }
-        
-        let fillColor, fillOpacity;
-        
-        // ВАЖНО: Квадраты внутри области ВСЕГДА остаются серыми (выгоревшими)
-        // Это проверяется ПЕРВОЙ, чтобы гарантировать правильный цвет
-        if (isInside) {
-            fillColor = '#1a1a1a';
-            fillOpacity = 0.6;
-        } else if (fireStartTime === undefined) {
-            // Квадрат снаружи области и никогда не горел - восстанавливаем оригинальный цвет
-            if (original) {
-                const restoredSquare = L.rectangle(bounds, {
-                    color: 'transparent',
-                    fillColor: original.fillColor,
-                    fillOpacity: original.fillOpacity,
-                    weight: 0,
-                    interactive: false
-                });
-                restoredSquare.addTo(gridLayer);
-                squareBounds.set(restoredSquare, bounds);
-                originalSquareColors.set(restoredSquare, original);
-                gridSquares[i] = restoredSquare;
-            }
-            continue;
-        } else if (fireStartTime !== undefined && fireStartTime <= time) {
-            // Квадрат снаружи области горел или горит сейчас
-            const burnTime = time - fireStartTime;
-            if (fireStartTime < time) {
-                // Горел в прошлом - серый цвет (выгоревший)
-                // Квадрат остается серым во все последующие часы
-                fillColor = '#1a1a1a';
-                fillOpacity = 0.6;
-            } else if (burnTime >= 1) {
-                // Выгорел (горит больше 1 часа) - серый цвет (выгоревший)
-                fillColor = '#1a1a1a';
-                fillOpacity = 0.6;
-            } else {
-                // Горит сейчас (fireStartTime === time и burnTime === 0) - красный цвет
-                fillColor = '#cc0000';
-                fillOpacity = 0.8;
-            }
-        } else {
-            // Еще не горит (fireStartTime > time)
-            if (original) {
-                const restoredSquare = L.rectangle(bounds, {
-                    color: 'transparent',
-                    fillColor: original.fillColor,
-                    fillOpacity: original.fillOpacity,
-                    weight: 0,
-                    interactive: false
-                });
-                restoredSquare.addTo(gridLayer);
-                squareBounds.set(restoredSquare, bounds);
-                originalSquareColors.set(restoredSquare, original);
-                gridSquares[i] = restoredSquare;
-            }
-            continue;
-        }
-        
-        // ВАЖНО: Квадраты внутри области ВСЕГДА обновляем, независимо от кэша
-        // Это гарантирует, что они всегда остаются серыми при движении timeline
-        const currentColorKey = `${fillColor}_${fillOpacity}`;
-        const cachedColor = squareCurrentColor.get(i);
-        
-        // ВАЖНО: Квадраты внутри области ВСЕГДА обновляем, независимо от кэша
-        // Это гарантирует, что они всегда остаются серыми при движении timeline
-        if (isInside) {
-            // Квадрат внутри области - ВСЕГДА обновляем, чтобы гарантировать серый цвет
-            const newSquare = L.rectangle(bounds, {
-                color: 'transparent',
-                fillColor: fillColor,
-                fillOpacity: fillOpacity,
-                weight: 0,
-                interactive: false
-            });
-            newSquare.addTo(gridLayer);
-            squareBounds.set(newSquare, bounds);
-            
-            if (original) {
-                originalSquareColors.set(newSquare, original);
-            }
-            gridSquares[i] = newSquare;
-            newSquare.bringToFront();
-            
-            // Сохраняем текущий цвет в кэш
-            squareCurrentColor.set(i, currentColorKey);
-        } else if (cachedColor !== currentColorKey) {
-            // Квадрат снаружи области и цвет изменился - обновляем
-            const newSquare = L.rectangle(bounds, {
-                color: 'transparent',
-                fillColor: fillColor,
-                fillOpacity: fillOpacity,
-                weight: 0,
-                interactive: false
-            });
-            newSquare.addTo(gridLayer);
-            squareBounds.set(newSquare, bounds);
-            
-            if (original) {
-                originalSquareColors.set(newSquare, original);
-            }
-            gridSquares[i] = newSquare;
-            newSquare.bringToFront();
-            
-            // Сохраняем текущий цвет в кэш
-            squareCurrentColor.set(i, currentColorKey);
-        }
+            updateFireVisualization(0);
+        }, 200);
     }
 }
 
@@ -1091,6 +706,16 @@ function clearDrawing() {
         if (timeDisplay) {
             timeDisplay.textContent = 0;
         }
+    }
+    
+    fireLinePoints = null;
+    squareFireState.clear();
+    squareCurrentColor.clear();
+    currentTime = 0;
+    fireSimulator = null;
+    
+    if (fireAreaDisplay) {
+        fireAreaDisplay.textContent = '0';
     }
     
     document.getElementById('drawAreaBtn').style.display = 'inline-block';
@@ -1229,6 +854,7 @@ if (toggleGridBtn) {
 const timelineContainer = document.querySelector('.timeline-container');
 const timelineSlider = document.getElementById('timelineSlider');
 const timeDisplay = document.getElementById('timeDisplay');
+const fireAreaDisplay = document.getElementById('fireAreaDisplay');
 
 // Инициализация timeline - скрываем до рисования области
 if (timelineContainer) {
@@ -1238,11 +864,162 @@ if (timelineContainer) {
 if (timelineSlider && timeDisplay) {
     timelineSlider.addEventListener('input', function(e) {
         const time = parseInt(e.target.value);
-        timeDisplay.textContent = time;
+        const minutes = time * 10;
+        timeDisplay.textContent = minutes;
+        currentTime = minutes;
         
-        // Используем предрасчитанные данные - вычислений нет, обновление мгновенное
-        updateFireSpread(time);
+        if (fireSimulator && fireLinePoints) {
+            updateFireVisualization(minutes);
+        }
     });
+}
+
+function updateFireVisualization(timeMinutes) {
+    if (!fireSimulator || !fireLinePoints) return;
+    
+    const state = fireSimulator.getStateAt(timeMinutes);
+    const closedPolygon = [...fireLinePoints];
+    if (closedPolygon.length > 0 && 
+        (closedPolygon[0].lat !== closedPolygon[closedPolygon.length - 1].lat || 
+         closedPolygon[0].lng !== closedPolygon[closedPolygon.length - 1].lng)) {
+        closedPolygon.push(closedPolygon[0]);
+    }
+    
+    const squaresToUpdate = new Set();
+    let currentFireArea = 0;
+    
+    for (let i = 0; i < gridSquares.length; i++) {
+        let square = gridSquares[i];
+        let bounds = squareBounds.get(square);
+        
+        if (!bounds) {
+            try {
+                bounds = square.getBounds();
+                if (bounds && bounds.isValid()) {
+                    squareBounds.set(square, bounds);
+                } else {
+                    continue;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+        
+        if (!bounds || !bounds.isValid()) {
+            continue;
+        }
+        
+        const center = bounds.getCenter();
+        const isInside = isPointInPolygon(center, closedPolygon);
+        const isBurning = state.burningMask.get(i) || false;
+        const isBurned = state.burnedMask.get(i) || false;
+        
+        if (isInside || isBurning || isBurned) {
+            squaresToUpdate.add(i);
+            currentFireArea += CELL_AREA_M2;
+        }
+    }
+    
+    if (fireAreaDisplay) {
+        fireAreaDisplay.textContent = formatFireArea(currentFireArea);
+    }
+    
+    for (let i of squaresToUpdate) {
+        let bounds = squareBounds.get(gridSquares[i]);
+        if (!bounds) {
+            try {
+                bounds = gridSquares[i].getBounds();
+                if (bounds && bounds.isValid()) {
+                    squareBounds.set(gridSquares[i], bounds);
+                } else {
+                    continue;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+        
+        if (!bounds || !bounds.isValid()) {
+            continue;
+        }
+        
+        const center = bounds.getCenter();
+        const isInside = isPointInPolygon(center, closedPolygon);
+        const isBurning = state.burningMask.get(i) || false;
+        const isBurned = state.burnedMask.get(i) || false;
+        const original = originalSquareColors.get(gridSquares[i]);
+        
+        let fillColor, fillOpacity;
+        
+        if (isInside) {
+            fillColor = '#1a1a1a';
+            fillOpacity = 0.6;
+        } else if (isBurning) {
+            fillColor = '#cc0000';
+            fillOpacity = 0.8;
+        } else if (isBurned) {
+            fillColor = '#1a1a1a';
+            fillOpacity = 0.6;
+        } else {
+            if (original) {
+                try {
+                    if (map.hasLayer(gridSquares[i])) {
+                        gridLayer.removeLayer(gridSquares[i]);
+                    }
+                } catch (e) {
+                }
+                
+                const restoredSquare = L.rectangle(bounds, {
+                    color: 'transparent',
+                    fillColor: original.fillColor,
+                    fillOpacity: original.fillOpacity,
+                    weight: 0,
+                    interactive: false
+                });
+                restoredSquare.addTo(gridLayer);
+                squareBounds.set(restoredSquare, bounds);
+                originalSquareColors.set(restoredSquare, original);
+                gridSquares[i] = restoredSquare;
+            }
+            continue;
+        }
+        
+        const currentColorKey = `${fillColor}_${fillOpacity}`;
+        const cachedColor = squareCurrentColor.get(i);
+        
+        if (cachedColor !== currentColorKey || isInside || isBurning || isBurned) {
+            try {
+                if (map.hasLayer(gridSquares[i])) {
+                    gridLayer.removeLayer(gridSquares[i]);
+                }
+            } catch (e) {
+            }
+            
+            const newSquare = L.rectangle(bounds, {
+                color: 'transparent',
+                fillColor: fillColor,
+                fillOpacity: fillOpacity,
+                weight: 0,
+                interactive: false
+            });
+            newSquare.addTo(gridLayer);
+            squareBounds.set(newSquare, bounds);
+            
+            if (original) {
+                originalSquareColors.set(newSquare, original);
+            }
+            gridSquares[i] = newSquare;
+            newSquare.bringToFront();
+            
+            squareCurrentColor.set(i, currentColorKey);
+        }
+    }
+    
+    if (drawPolyline) {
+        const closedPoints = [...fireLinePoints, fireLinePoints[0]];
+        drawPolyline.setLatLngs(closedPoints);
+        drawPolyline.bringToFront();
+    }
 }
 
 // Load border when map is ready

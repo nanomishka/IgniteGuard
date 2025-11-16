@@ -32,17 +32,20 @@
         <div class="timeline-container">
             <h3>Fire Spread Timeline</h3>
             <div class="timeline-controls">
-                <span class="time-label">Time: <span id="timeDisplay">0</span> hours</span>
+                <span class="time-label">Time: <span id="timeDisplay">0</span> minutes</span>
                 <input type="range" id="timelineSlider" min="0" max="6" value="0" step="1" class="timeline-slider">
                 <div class="timeline-labels">
-                    <span>0h</span>
-                    <span>1h</span>
-                    <span>2h</span>
-                    <span>3h</span>
-                    <span>4h</span>
-                    <span>5h</span>
-                    <span>6h</span>
+                    <span>0m</span>
+                    <span>10m</span>
+                    <span>20m</span>
+                    <span>30m</span>
+                    <span>40m</span>
+                    <span>50m</span>
+                    <span>60m</span>
                 </div>
+            </div>
+            <div class="fire-area-info">
+                <span class="area-label">Fire Area: <span id="fireAreaDisplay">0 м²</span></span>
             </div>
         </div>
         
@@ -53,6 +56,9 @@
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Fire Spread Simulator -->
+    <script src="fire_spread_simulator.js"></script>
     
     <!-- Custom JS -->
     <script src="script.js"></script>
