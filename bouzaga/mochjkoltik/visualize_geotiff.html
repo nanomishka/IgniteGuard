@@ -1,0 +1,2307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IgniteGuard - Cyprus Wildfire Management Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #0a0e27;
+            color: #ffffff;
+        }
+
+        #header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: white;
+            padding: 15px 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid rgba(255, 140, 0, 0.3);
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo-text {
+            font-size: 28px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 50%, #ffa500 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 20px rgba(255, 140, 0, 0.5);
+        }
+
+        .logo-subtitle {
+            font-size: 12px;
+            color: #ffa500;
+            letter-spacing: 3px;
+            margin-top: -5px;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .stat-badge {
+            background: rgba(255, 140, 0, 0.15);
+            border: 1px solid rgba(255, 140, 0, 0.3);
+            padding: 8px 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-badge-label {
+            font-size: 11px;
+            color: #ffa500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-badge-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-top: 2px;
+        }
+
+        #container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            gap: 0;
+        }
+
+        #map-container {
+            flex: 1.2;
+            height: 100%;
+            position: relative;
+            background: #0a0e27;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        #dashboard-panel {
+            width: 450px;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.3);
+            border-left: 2px solid rgba(255, 140, 0, 0.2);
+        }
+
+        #info-panel {
+            width: 100%;
+            background: transparent;
+            padding: 0;
+            overflow-y: visible;
+            box-shadow: none;
+        }
+
+        #simulation-controls {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 140, 0, 0.2);
+            padding: 18px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 140, 0, 0.2);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .chart-title {
+            color: #ff8c42;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .chart-canvas {
+            width: 100%;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
+            color: white;
+            border: 1px solid rgba(255, 140, 0, 0.5);
+            box-shadow: 0 2px 10px rgba(255, 140, 0, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #ff8c42 0%, #ffa500 100%);
+            box-shadow: 0 4px 15px rgba(255, 140, 0, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            border: 1px solid rgba(220, 53, 69, 0.5);
+            box-shadow: 0 2px 10px rgba(220, 53, 69, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+            color: white;
+            border: 1px solid rgba(40, 167, 69, 0.5);
+            box-shadow: 0 2px 10px rgba(40, 167, 69, 0.3);
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #218838 0%, #1e7e34 100%);
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .timeline-container {
+            margin: 15px 0;
+        }
+
+        .timeline-slider {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .timeline-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .mode-selector {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid rgba(255, 140, 0, 0.2);
+        }
+
+        .mode-selector label {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            cursor: pointer;
+            color: #ffffff;
+            font-size: 13px;
+        }
+
+        .mode-selector label:hover {
+            color: #ffa500;
+        }
+
+        .mode-selector input[type="radio"],
+        .mode-selector input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        .layer-controls {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid rgba(255, 140, 0, 0.2);
+        }
+
+        .layer-controls label {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            cursor: pointer;
+            color: #ffffff;
+            font-size: 13px;
+        }
+
+        .layer-controls label:hover {
+            color: #ffa500;
+        }
+
+        .vision-mode-info {
+            background: rgba(0, 123, 255, 0.15);
+            border: 1px solid rgba(0, 123, 255, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .info-section {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 140, 0, 0.2);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .info-section h3 {
+            color: #ff8c42;
+            font-size: 16px;
+            margin-bottom: 12px;
+            border-bottom: 2px solid rgba(255, 140, 0, 0.3);
+            padding-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .data-row:last-child {
+            border-bottom: none;
+        }
+
+        .data-label {
+            font-weight: 600;
+            color: #ffa500;
+            font-size: 13px;
+        }
+
+        .data-value {
+            color: #ffffff;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .legend {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 140, 0, 0.2);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .legend h4 {
+            margin-bottom: 10px;
+            color: #ff8c42;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 14px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+        }
+
+        .click-instruction {
+            background: rgba(255, 193, 7, 0.15);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .leaflet-popup-content {
+            margin: 10px;
+            min-width: 200px;
+        }
+
+        .popup-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .popup-value {
+            font-size: 18px;
+            color: #212529;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <div class="logo-section">
+            <div>
+                <div class="logo-text">Ignite Guard</div>
+                <div class="logo-subtitle">HACKATHON</div>
+            </div>
+        </div>
+        <div class="header-stats">
+            <div class="stat-badge">
+                <div class="stat-badge-label">Risk Level</div>
+                <div class="stat-badge-value" id="headerRiskLevel">--</div>
+            </div>
+            <div class="stat-badge">
+                <div class="stat-badge-label">Active Fires</div>
+                <div class="stat-badge-value" id="headerActiveFires">0</div>
+            </div>
+            <div class="stat-badge">
+                <div class="stat-badge-label">Coverage</div>
+                <div class="stat-badge-value">Cyprus</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="container">
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
+        <div id="dashboard-panel">
+            <div id="info-panel">
+            <div id="simulation-controls">
+                <h3 style="color: #ff8c42; font-size: 16px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">🗺️ Map Layers</h3>
+                
+                <div class="layer-controls">
+                    <label>
+                        <input type="radio" name="layerType" value="spreadRate" checked>
+                        <span>Spread Rate (current)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="layerType" value="fuel">
+                        <span>Fuel / Vegetation Density</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="layerType" value="riskHeatmap">
+                        <span>Combined Risk Heatmap</span>
+                    </label>
+                </div>
+
+                <h3 style="color: #ff8c42; font-size: 16px; margin: 15px 0 10px 0; text-transform: uppercase; letter-spacing: 1px;">👁️ Vision Mode</h3>
+                
+                <div class="mode-selector">
+                    <label>
+                        <input type="radio" name="visionMode" value="standard" checked>
+                        <span>Standard</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="visionMode" value="ndwi">
+                        <span>NDWI Vision (Firefighter)</span>
+                    </label>
+                </div>
+
+                <div class="vision-mode-info" id="visionModeInfo" style="display: none;">
+                    <strong>NDWI Vision:</strong> Darker blues = wetter vegetation; bright reds = extremely dry fuel.
+                </div>
+
+                <label style="display: flex; align-items: center; margin: 15px 0 10px 0; cursor: pointer;">
+                    <input type="checkbox" id="showFirebreaks" style="margin-right: 8px;">
+                    <span><strong>Show Recommended Firebreaks</strong></span>
+                </label>
+
+                <h3 style="color: #ff8c42; font-size: 16px; margin: 15px 0 10px 0; text-transform: uppercase; letter-spacing: 1px;">🔥 Fire Simulation</h3>
+                
+                <div class="mode-selector">
+                    <label>
+                        <input type="radio" name="mapMode" value="view" checked>
+                        <span>View Data (Click to inspect)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="mapMode" value="simulate">
+                        <span>🔥 Start Fire (Click to ignite)</span>
+                    </label>
+                </div>
+
+                <div class="control-buttons">
+                    <button class="btn btn-success" id="playBtn" disabled>▶ Play</button>
+                    <button class="btn btn-primary" id="pauseBtn" disabled>⏸ Pause</button>
+                    <button class="btn btn-danger" id="clearBtn" disabled>🗑 Clear</button>
+                </div>
+
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 140, 0, 0.2);">
+                    <h3 style="color: #ff8c42; font-size: 16px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">🛡️ Firebreak Impact Simulation</h3>
+                    
+                    <div class="mode-selector">
+                        <label>
+                            <input type="radio" name="simulationMode" value="without" checked>
+                            <span>Simulate: Without Firebreaks</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="simulationMode" value="with">
+                            <span>Simulate: With Firebreaks</span>
+                        </label>
+                    </div>
+                    
+                    <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-top: 8px;">
+                        <em>Note: Enable "Show Recommended Firebreaks" first to see firebreak impact</em>
+                    </div>
+                </div>
+
+                <div class="timeline-container" id="timelineContainer" style="display: none;">
+                    <div class="timeline-info">
+                        <span>Time: <strong id="currentTime">0</strong> hours</span>
+                        <span>Total: <strong id="totalTime">24</strong> hours</span>
+                    </div>
+                    <input type="range" class="timeline-slider" id="timelineSlider" min="0" max="24" value="0" step="1">
+                    <div style="margin-top: 10px; font-size: 12px;">
+                        <div>Burned Area: <strong id="burnedArea">0</strong> km²</div>
+                        <div>Spread Rate: <strong id="spreadRate">0</strong> km/h</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="click-instruction">
+                📍 Select mode above, then click on map
+            </div>
+
+            <div class="info-section">
+                <h3>📊 Statistics</h3>
+                <div id="stats">
+                    <div class="loading">Loading data...</div>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h3>📍 Selected Location</h3>
+                <div id="location-info">
+                    <div class="data-row">
+                        <span class="data-label">Click on map to view data</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-section legend">
+                <h4>🎨 Color Legend</h4>
+                <div id="legend-items"></div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">🌡️ Temperature Trend</div>
+                <canvas id="temperatureChart" class="chart-canvas"></canvas>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">🌿 NDVI (Vegetation Index)</div>
+                <canvas id="ndviChart" class="chart-canvas"></canvas>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">💧 NDWI (Water Content Index)</div>
+                <canvas id="ndwiChart" class="chart-canvas"></canvas>
+            </div>
+
+            <div class="info-section" id="impactSummary" style="display: none;">
+                <h3>📊 Impact Summary</h3>
+                <div id="impactContent">
+                    <div class="loading">Run simulations to see impact comparison</div>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h3>ℹ️ About IgniteGuard</h3>
+                <p style="font-size: 12px; line-height: 1.6; color: rgba(255,255,255,0.7);">
+                    Advanced wildfire management dashboard for Cyprus. Real-time monitoring of fire risk, 
+                    vegetation health, and environmental conditions. Powered by Sentinel-2 satellite data 
+                    and advanced fire spread modeling.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
+    
+    <script>
+        // Initialize the map centered on Cyprus
+        const map = L.map('map').setView([35.1264, 33.4299], 9);
+
+        // Add OpenStreetMap base layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(map);
+
+        let georasterLayer;
+        let georaster;
+        let stats = {
+            min: null,
+            max: null,
+            mean: null,
+            count: 0
+        };
+
+        // Visualization state
+        let visualizationState = {
+            visionMode: 'standard', // 'standard' or 'ndwi'
+            layerType: 'spreadRate', // 'spreadRate', 'fuel', or 'riskHeatmap'
+            showFirebreaks: false
+        };
+
+        // Firebreak layer group
+        let firebreakLayer = null;
+
+        // Fire simulation state
+        let fireSimulation = {
+            active: false,
+            ignitionPoint: null,
+            currentTime: 0,
+            maxTime: 24, // hours
+            playing: false,
+            animationInterval: null,
+            fireMarker: null,
+            fireLayer: null,
+            burnedCells: new Set(),
+            fireFront: [],
+            mapMode: 'view', // 'view' or 'simulate'
+            simulationMode: 'without', // 'without' or 'with' firebreaks
+            // Scientific parameters based on IgniteGuard model
+            maxROS: 30, // meters per minute (max ROS for Mediterranean)
+            pixelSizeMeters: null, // calculated from georaster
+            timeStepHours: 1, // simulation time step
+            minSpreadThreshold: 0.01, // minimum spread factor to propagate fire
+            // Firebreak parameters
+            firebreakMask: null, // 2D array: firebreakMask[y][x] = true if cell is a firebreak
+            FIREBREAK_SLOWDOWN_FACTOR: 0.2 // 0 = full block, 0.2 = 80% slower (20% of normal speed)
+        };
+
+        // Metrics tracking for comparison
+        let simulationMetrics = {
+            without: {
+                burnedCountOverTime: [],
+                finalBurnedCount: 0,
+                maxSpreadRate: 0
+            },
+            with: {
+                burnedCountOverTime: [],
+                finalBurnedCount: 0,
+                maxSpreadRate: 0
+            },
+            lastIgnitionPoint: null // Track if same ignition point was used
+        };
+
+        // ============================================================================
+        // COLOR SCHEME FUNCTIONS
+        // ============================================================================
+        
+        /**
+         * Normalize a value to 0-1 range based on statistics
+         * TODO: If separate fuel/NDWI rasters are available, use them directly instead
+         */
+        function normalizeValue(value) {
+            if (value === null || value === undefined || isNaN(value)) return null;
+            if (stats.min === null || stats.max === null) return 0.5;
+            if (stats.min === stats.max) return 0.5;
+            return (value - stats.min) / (stats.max - stats.min);
+        }
+
+        /**
+         * Standard/Spread Rate color scheme: green (low) → yellow → orange → red (high)
+         */
+        function getStandardColor(value) {
+            if (value === null || value === undefined || isNaN(value)) return 'rgba(128, 128, 128, 0.5)';
+            
+            const normalized = normalizeValue(value);
+            if (normalized === null) return 'rgba(128, 128, 128, 0.5)';
+
+            // Color gradient from green (low risk) to red (high risk)
+            if (normalized < 0.2) return `rgba(0, 255, 0, 0.7)`;      // Green
+            if (normalized < 0.4) return `rgba(154, 205, 50, 0.7)`;   // Yellow-green
+            if (normalized < 0.6) return `rgba(255, 255, 0, 0.7)`;    // Yellow
+            if (normalized < 0.8) return `rgba(255, 165, 0, 0.7)`;    // Orange
+            return `rgba(255, 0, 0, 0.7)`;                             // Red
+        }
+
+        /**
+         * Fuel/Vegetation Density color scheme: green (low fuel) → yellow → red (high fuel)
+         * NOTE: Currently derived from spread rate band. Replace with actual fuel raster when available.
+         */
+        function getFuelColor(value) {
+            if (value === null || value === undefined || isNaN(value)) return 'rgba(128, 128, 128, 0.5)';
+            
+            // Derive fuel index from spread rate value (normalized)
+            // In real implementation, this would come from a separate fuel density raster
+            const normalized = normalizeValue(value);
+            if (normalized === null) return 'rgba(128, 128, 128, 0.5)';
+
+            // Low fuel → green, Medium → yellow, High → red
+            if (normalized < 0.33) return `rgba(0, 255, 0, 0.7)`;      // Green (low fuel)
+            if (normalized < 0.66) return `rgba(255, 255, 0, 0.7)`;    // Yellow (medium fuel)
+            return `rgba(255, 0, 0, 0.7)`;                              // Red (high fuel)
+        }
+
+        /**
+         * Combined Risk Heatmap: more intense red/green visualization
+         */
+        function getRiskHeatmapColor(value) {
+            if (value === null || value === undefined || isNaN(value)) return 'rgba(128, 128, 128, 0.5)';
+            
+            const normalized = normalizeValue(value);
+            if (normalized === null) return 'rgba(128, 128, 128, 0.5)';
+
+            // More dramatic contrast for risk visualization
+            if (normalized < 0.25) return `rgba(0, 200, 0, 0.8)`;       // Dark green (low risk)
+            if (normalized < 0.5) return `rgba(255, 255, 0, 0.8)`;      // Yellow (medium risk)
+            if (normalized < 0.75) return `rgba(255, 140, 0, 0.8)`;     // Orange (high risk)
+            return `rgba(200, 0, 0, 0.9)`;                               // Dark red (very high risk)
+        }
+
+        /**
+         * NDWI Vision (Firefighter mode): treats higher values as wetter, lower as drier
+         * NOTE: This is a transformation of the spread rate band. Replace with actual NDWI raster when available.
+         * NDWI typically ranges from -1 to +1, where:
+         *   +0.4 to +1.0 = high water content (cool colors/blues)
+         *   0 to +0.4 = slightly dry (light green/yellow)
+         *   -0.1 to 0 = dry (orange)
+         *   < -0.1 = extremely dry (bright red)
+         */
+        function getNDWIColor(value) {
+            if (value === null || value === undefined || isNaN(value)) return 'rgba(128, 128, 128, 0.5)';
+            
+            // Transform spread rate value to conceptual NDWI range
+            // Higher spread rate → lower NDWI (drier)
+            // Lower spread rate → higher NDWI (wetter)
+            // This is an approximation; real NDWI data should replace this transformation
+            const normalized = normalizeValue(value);
+            if (normalized === null) return 'rgba(128, 128, 128, 0.5)';
+            
+            // Invert: high spread rate (high risk) = low NDWI (dry)
+            // Map normalized [0,1] to NDWI-like range [-0.5, +0.5]
+            const conceptualNDWI = 0.5 - normalized; // 0 → 0.5, 1 → -0.5
+            
+            // Apply NDWI color thresholds
+            if (conceptualNDWI >= 0.4) {
+                // High water content → cool blues
+                return `rgba(0, 100, 200, 0.7)`;      // Blue (wet)
+            } else if (conceptualNDWI >= 0) {
+                // Slightly dry → light green/yellow
+                return `rgba(144, 238, 144, 0.7)`;    // Light green (slightly dry)
+            } else if (conceptualNDWI >= -0.1) {
+                // Dry → orange
+                return `rgba(255, 165, 0, 0.7)`;      // Orange (dry)
+            } else {
+                // Extremely dry → bright red
+                return `rgba(255, 0, 0, 0.8)`;        // Bright red (extremely dry)
+            }
+        }
+
+        /**
+         * Main color function that routes to appropriate color scheme based on mode and layer
+         */
+        function getColorForMode(value, visionMode, layerType) {
+            if (visionMode === 'ndwi') {
+                return getNDWIColor(value);
+            }
+            
+            // Standard mode: use layer-specific colors
+            if (layerType === 'fuel') {
+                return getFuelColor(value);
+            } else if (layerType === 'riskHeatmap') {
+                return getRiskHeatmapColor(value);
+            } else {
+                // Default: spread rate
+                return getStandardColor(value);
+            }
+        }
+
+        // Legacy function for backward compatibility
+        function getColor(value) {
+            return getColorForMode(value, visualizationState.visionMode, 'spreadRate');
+        }
+
+        /**
+         * Update header statistics
+         */
+        function updateHeaderStats() {
+            if (stats.mean !== null && stats.min !== null && stats.max !== null) {
+                const normalizedRisk = ((stats.mean - stats.min) / (stats.max - stats.min)) * 100;
+                let riskLevel = 'Low';
+                if (normalizedRisk >= 70) riskLevel = 'Critical';
+                else if (normalizedRisk >= 50) riskLevel = 'High';
+                else if (normalizedRisk >= 30) riskLevel = 'Medium';
+                
+                document.getElementById('headerRiskLevel').textContent = riskLevel;
+            }
+
+            // Update active fires count
+            const activeFires = fireSimulation.active ? 1 : 0;
+            document.getElementById('headerActiveFires').textContent = activeFires;
+        }
+
+        // Chart data for environmental monitoring
+        let chartData = {
+            temperature: [],
+            ndvi: [],
+            ndwi: [],
+            timestamps: []
+        };
+
+        // Initialize chart data with simulated/derived values
+        function initializeChartData() {
+            // Generate time series data (last 30 days)
+            const now = new Date();
+            chartData.timestamps = [];
+            chartData.temperature = [];
+            chartData.ndvi = [];
+            chartData.ndwi = [];
+
+            for (let i = 29; i >= 0; i--) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - i);
+                chartData.timestamps.push(date);
+
+                // Simulate temperature (Cyprus summer: 25-35°C with daily variation)
+                const baseTemp = 30;
+                const dailyVariation = Math.sin((i / 7) * Math.PI * 2) * 5; // Weekly cycle
+                const randomVariation = (Math.random() - 0.5) * 3;
+                chartData.temperature.push(baseTemp + dailyVariation + randomVariation);
+
+                // Derive NDVI from spread rate data (inverse relationship: higher risk = lower NDVI)
+                if (stats.mean !== null) {
+                    const normalizedRisk = (stats.mean - stats.min) / (stats.max - stats.min);
+                    // NDVI range: -0.2 to 0.9, lower when dry/high risk
+                    const baseNDVI = 0.6 - (normalizedRisk * 0.4);
+                    const variation = (Math.random() - 0.5) * 0.1;
+                    chartData.ndvi.push(Math.max(-0.2, Math.min(0.9, baseNDVI + variation)));
+                } else {
+                    chartData.ndvi.push(0.4 + (Math.random() - 0.5) * 0.2);
+                }
+
+                // Derive NDWI (water content, inverse of dryness)
+                if (stats.mean !== null) {
+                    const normalizedRisk = (stats.mean - stats.min) / (stats.max - stats.min);
+                    // NDWI range: -0.5 to 0.5, lower when dry
+                    const baseNDWI = 0.2 - (normalizedRisk * 0.3);
+                    const variation = (Math.random() - 0.5) * 0.1;
+                    chartData.ndwi.push(Math.max(-0.5, Math.min(0.5, baseNDWI + variation)));
+                } else {
+                    chartData.ndwi.push(0.1 + (Math.random() - 0.5) * 0.15);
+                }
+            }
+
+            // Draw all charts
+            setTimeout(() => {
+                drawTemperatureChart();
+                drawNDVIChart();
+                drawNDWIChart();
+            }, 100);
+        }
+
+        function drawTemperatureChart() {
+            const canvas = document.getElementById('temperatureChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = canvas.offsetWidth;
+            const height = canvas.height = canvas.offsetHeight;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (chartData.temperature.length === 0) return;
+
+            const padding = 40;
+            const chartWidth = width - padding * 2;
+            const chartHeight = height - padding * 2;
+
+            const minTemp = Math.min(...chartData.temperature) - 2;
+            const maxTemp = Math.max(...chartData.temperature) + 2;
+            const tempRange = maxTemp - minTemp;
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255, 140, 0, 0.2)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 5; i++) {
+                const y = padding + (chartHeight / 5) * i;
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(width - padding, y);
+                ctx.stroke();
+            }
+
+            // Draw temperature line
+            ctx.strokeStyle = '#ff6b35';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            chartData.temperature.forEach((temp, i) => {
+                const x = padding + (chartWidth / (chartData.temperature.length - 1)) * i;
+                const y = padding + chartHeight - ((temp - minTemp) / tempRange) * chartHeight;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Draw points
+            ctx.fillStyle = '#ff8c42';
+            chartData.temperature.forEach((temp, i) => {
+                const x = padding + (chartWidth / (chartData.temperature.length - 1)) * i;
+                const y = padding + chartHeight - ((temp - minTemp) / tempRange) * chartHeight;
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Labels
+            ctx.fillStyle = '#ffa500';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Days', width / 2, height - 5);
+            ctx.save();
+            ctx.translate(15, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Temperature (°C)', 0, 0);
+            ctx.restore();
+
+            // Y-axis labels
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 5; i++) {
+                const temp = maxTemp - (tempRange / 5) * i;
+                const y = padding + (chartHeight / 5) * i;
+                ctx.fillText(temp.toFixed(1) + '°', padding - 10, y + 3);
+            }
+        }
+
+        function drawNDVIChart() {
+            const canvas = document.getElementById('ndviChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = canvas.offsetWidth;
+            const height = canvas.height = canvas.offsetHeight;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (chartData.ndvi.length === 0) return;
+
+            const padding = 40;
+            const chartWidth = width - padding * 2;
+            const chartHeight = height - padding * 2;
+
+            const minNDVI = -0.2;
+            const maxNDVI = 0.9;
+            const ndviRange = maxNDVI - minNDVI;
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(40, 167, 69, 0.2)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 5; i++) {
+                const y = padding + (chartHeight / 5) * i;
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(width - padding, y);
+                ctx.stroke();
+            }
+
+            // Draw NDVI line
+            ctx.strokeStyle = '#28a745';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            chartData.ndvi.forEach((ndvi, i) => {
+                const x = padding + (chartWidth / (chartData.ndvi.length - 1)) * i;
+                const y = padding + chartHeight - ((ndvi - minNDVI) / ndviRange) * chartHeight;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Draw points
+            ctx.fillStyle = '#28a745';
+            chartData.ndvi.forEach((ndvi, i) => {
+                const x = padding + (chartWidth / (chartData.ndvi.length - 1)) * i;
+                const y = padding + chartHeight - ((ndvi - minNDVI) / ndviRange) * chartHeight;
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Labels
+            ctx.fillStyle = '#28a745';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Days', width / 2, height - 5);
+            ctx.save();
+            ctx.translate(15, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('NDVI Index', 0, 0);
+            ctx.restore();
+
+            // Y-axis labels
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 5; i++) {
+                const ndvi = maxNDVI - (ndviRange / 5) * i;
+                const y = padding + (chartHeight / 5) * i;
+                ctx.fillText(ndvi.toFixed(2), padding - 10, y + 3);
+            }
+        }
+
+        function drawNDWIChart() {
+            const canvas = document.getElementById('ndwiChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width = canvas.offsetWidth;
+            const height = canvas.height = canvas.offsetHeight;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (chartData.ndwi.length === 0) return;
+
+            const padding = 40;
+            const chartWidth = width - padding * 2;
+            const chartHeight = height - padding * 2;
+
+            const minNDWI = -0.5;
+            const maxNDWI = 0.5;
+            const ndwiRange = maxNDWI - minNDWI;
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(0, 123, 255, 0.2)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 5; i++) {
+                const y = padding + (chartHeight / 5) * i;
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(width - padding, y);
+                ctx.stroke();
+            }
+
+            // Draw NDWI line
+            ctx.strokeStyle = '#007bff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            chartData.ndwi.forEach((ndwi, i) => {
+                const x = padding + (chartWidth / (chartData.ndwi.length - 1)) * i;
+                const y = padding + chartHeight - ((ndwi - minNDWI) / ndwiRange) * chartHeight;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Draw points
+            ctx.fillStyle = '#007bff';
+            chartData.ndwi.forEach((ndwi, i) => {
+                const x = padding + (chartWidth / (chartData.ndwi.length - 1)) * i;
+                const y = padding + chartHeight - ((ndwi - minNDWI) / ndwiRange) * chartHeight;
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Labels
+            ctx.fillStyle = '#007bff';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Days', width / 2, height - 5);
+            ctx.save();
+            ctx.translate(15, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('NDWI Index', 0, 0);
+            ctx.restore();
+
+            // Y-axis labels
+            ctx.textAlign = 'right';
+            for (let i = 0; i <= 5; i++) {
+                const ndwi = maxNDWI - (ndwiRange / 5) * i;
+                const y = padding + (chartHeight / 5) * i;
+                ctx.fillText(ndwi.toFixed(2), padding - 10, y + 3);
+            }
+        }
+
+        // Load and display the GeoTIFF
+        async function loadGeoTIFF() {
+            try {
+                const response = await fetch('cyprus_spread_rate_fuel_dryness_slope.tif');
+                const arrayBuffer = await response.arrayBuffer();
+                
+                georaster = await parseGeoraster(arrayBuffer);
+                console.log('GeoRaster loaded:', georaster);
+
+                // Calculate statistics
+                const values = georaster.values[0].flat().filter(v => v !== null && !isNaN(v) && v !== georaster.noDataValue);
+                
+                if (values.length > 0) {
+                    stats.min = Math.min(...values);
+                    stats.max = Math.max(...values);
+                    stats.mean = values.reduce((a, b) => a + b, 0) / values.length;
+                    stats.count = values.length;
+                }
+
+                // Update statistics display
+                document.getElementById('stats').innerHTML = `
+                    <div class="data-row">
+                        <span class="data-label">Min Value:</span>
+                        <span class="data-value">${stats.min?.toFixed(2) || 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Max Value:</span>
+                        <span class="data-value">${stats.max?.toFixed(2) || 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Mean Value:</span>
+                        <span class="data-value">${stats.mean?.toFixed(2) || 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Data Points:</span>
+                        <span class="data-value">${stats.count.toLocaleString()}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Resolution:</span>
+                        <span class="data-value">${georaster.width} × ${georaster.height}</span>
+                    </div>
+                `;
+
+                // Create legend
+                createLegend();
+
+                // Create the layer with custom rendering
+                updateRasterLayer();
+
+                // Initialize and draw charts
+                initializeChartData();
+
+                // Update header stats
+                updateHeaderStats();
+
+                // Initialize firebreak layer if not already done
+                if (!firebreakLayer) {
+                    firebreakLayer = L.layerGroup();
+                }
+
+                // Fit map bounds to the raster
+                const bounds = [
+                    [georaster.ymin, georaster.xmin],
+                    [georaster.ymax, georaster.xmax]
+                ];
+                map.fitBounds(bounds);
+
+            } catch (error) {
+                console.error('Error loading GeoTIFF:', error);
+                document.getElementById('stats').innerHTML = `
+                    <div style="color: #dc3545; padding: 10px;">
+                        Error loading data: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Update the raster layer with current visualization settings
+         */
+        function updateRasterLayer() {
+            if (!georaster) return;
+
+            // Remove existing layer if present
+            if (georasterLayer) {
+                map.removeLayer(georasterLayer);
+            }
+
+            // Get current layer type
+            const layerType = visualizationState.layerType;
+
+            // Create new layer with updated color function
+            georasterLayer = new GeoRasterLayer({
+                georaster: georaster,
+                opacity: 0.7,
+                pixelValuesToColorFn: values => {
+                    const value = values[0];
+                    return getColorForMode(value, visualizationState.visionMode, layerType);
+                },
+                resolution: 256
+            });
+
+            georasterLayer.addTo(map);
+            updateLegend();
+        }
+
+        function createLegend() {
+            updateLegend();
+        }
+
+        /**
+         * Update legend based on current vision mode and layer type
+         */
+        function updateLegend() {
+            const legendItems = document.getElementById('legend-items');
+            let ranges;
+
+            if (visualizationState.visionMode === 'ndwi') {
+                // NDWI Vision legend
+                ranges = [
+                    { label: 'Wet', color: 'rgba(0, 100, 200, 0.7)', range: 'High water content' },
+                    { label: 'Slightly Dry', color: 'rgba(144, 238, 144, 0.7)', range: 'Moderate moisture' },
+                    { label: 'Dry', color: 'rgba(255, 165, 0, 0.7)', range: 'Low moisture' },
+                    { label: 'Extremely Dry', color: 'rgba(255, 0, 0, 0.8)', range: 'Critical dryness' }
+                ];
+            } else if (visualizationState.layerType === 'fuel') {
+                // Fuel/Vegetation Density legend
+                ranges = [
+                    { label: 'Low Fuel', color: 'rgba(0, 255, 0, 0.7)', range: 'Sparse vegetation' },
+                    { label: 'Medium Fuel', color: 'rgba(255, 255, 0, 0.7)', range: 'Moderate vegetation' },
+                    { label: 'High Fuel', color: 'rgba(255, 0, 0, 0.7)', range: 'Dense vegetation' }
+                ];
+            } else if (visualizationState.layerType === 'riskHeatmap') {
+                // Combined Risk Heatmap legend
+                ranges = [
+                    { label: 'Low Risk', color: 'rgba(0, 200, 0, 0.8)', range: '0-25%' },
+                    { label: 'Medium Risk', color: 'rgba(255, 255, 0, 0.8)', range: '25-50%' },
+                    { label: 'High Risk', color: 'rgba(255, 140, 0, 0.8)', range: '50-75%' },
+                    { label: 'Very High Risk', color: 'rgba(200, 0, 0, 0.9)', range: '75-100%' }
+                ];
+            } else {
+                // Standard/Spread Rate legend
+                ranges = [
+                    { label: 'Very Low', color: 'rgba(0, 255, 0, 0.7)', range: '0-20%' },
+                    { label: 'Low', color: 'rgba(154, 205, 50, 0.7)', range: '20-40%' },
+                    { label: 'Medium', color: 'rgba(255, 255, 0, 0.7)', range: '40-60%' },
+                    { label: 'High', color: 'rgba(255, 165, 0, 0.7)', range: '60-80%' },
+                    { label: 'Very High', color: 'rgba(255, 0, 0, 0.7)', range: '80-100%' }
+                ];
+            }
+
+            legendItems.innerHTML = ranges.map(item => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${item.color};"></div>
+                    <div>
+                        <strong>${item.label}</strong><br>
+                        <small style="color: #6c757d;">${item.range}</small>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Fire simulation functions
+        function initializeFire(lat, lng) {
+            clearFireSimulation();
+            
+            const x = Math.floor((lng - georaster.xmin) / georaster.pixelWidth);
+            const y = Math.floor((georaster.ymax - lat) / georaster.pixelHeight);
+
+            if (x < 0 || x >= georaster.width || y < 0 || y >= georaster.height) {
+                alert('Please click within the data bounds');
+                return;
+            }
+
+            // Check if location has valid data (not water/zero value)
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                alert('Cannot start fire on water or areas with no fuel. Please select a location with vegetation.');
+                return;
+            }
+
+            // Calculate pixel size in meters (approximate)
+            // At Cyprus latitude (~35°), 1 degree ≈ 111 km
+            const latMetersPerDegree = 111000;
+            const lngMetersPerDegree = 111000 * Math.cos(lat * Math.PI / 180);
+            fireSimulation.pixelSizeMeters = Math.sqrt(
+                (georaster.pixelWidth * lngMetersPerDegree) ** 2 +
+                (georaster.pixelHeight * latMetersPerDegree) ** 2
+            );
+
+            fireSimulation.active = true;
+            fireSimulation.ignitionPoint = { lat, lng, x, y };
+            fireSimulation.currentTime = 0;
+            fireSimulation.burnedCells.clear();
+            fireSimulation.fireFront = [{ x, y, time: 0 }];
+
+            // Check if this is a new ignition point (reset metrics if different)
+            const currentIgnitionKey = `${x},${y}`;
+            if (simulationMetrics.lastIgnitionPoint !== currentIgnitionKey) {
+                // New ignition point - reset metrics
+                simulationMetrics.without = { burnedCountOverTime: [], finalBurnedCount: 0, maxSpreadRate: 0 };
+                simulationMetrics.with = { burnedCountOverTime: [], finalBurnedCount: 0, maxSpreadRate: 0 };
+                simulationMetrics.lastIgnitionPoint = currentIgnitionKey;
+            }
+
+            // Ensure firebreak mask is up to date if firebreaks are shown
+            if (visualizationState.showFirebreaks && firebreakLayer) {
+                rasterizeFirebreaks();
+            }
+
+            // Create fire layer
+            if (fireSimulation.fireLayer) {
+                map.removeLayer(fireSimulation.fireLayer);
+            }
+            fireSimulation.fireLayer = L.layerGroup().addTo(map);
+
+            // Add ignition marker
+            const fireIcon = L.divIcon({
+                className: 'fire-marker',
+                html: '<div style="background: red; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px red;"></div>',
+                iconSize: [20, 20]
+            });
+            fireSimulation.fireMarker = L.marker([lat, lng], { icon: fireIcon }).addTo(fireSimulation.fireLayer);
+
+            // Enable controls
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('clearBtn').disabled = false;
+            document.getElementById('timelineContainer').style.display = 'block';
+            document.getElementById('timelineSlider').value = 0;
+            document.getElementById('currentTime').textContent = '0';
+
+            updateFireVisualization(0);
+            updateHeaderStats();
+        }
+
+        function calculateROS(spreadFactor) {
+            // IgniteGuard ROS Model: ROS = SF_norm × 30 m/min
+            // SF is already normalized in the data (0-1 range expected)
+            // Cap spread factor at reasonable maximum
+            const cappedSF = Math.min(spreadFactor, 1.0);
+            return cappedSF * fireSimulation.maxROS; // meters per minute
+        }
+
+        function calculateSpreadDistance(ros, timeHours) {
+            // Convert ROS (m/min) to distance traveled in given time
+            const timeMinutes = timeHours * 60;
+            return ros * timeMinutes; // meters
+        }
+
+        function canCellBurn(x, y) {
+            // Check if cell is within bounds
+            if (x < 0 || x >= georaster.width || y < 0 || y >= georaster.height) {
+                return false;
+            }
+            
+            // Check if already burned
+            if (fireSimulation.burnedCells.has(`${x},${y}`)) {
+                return false;
+            }
+            
+            // Check if cell has valid fuel (not water/zero)
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                return false;
+            }
+            
+            return true;
+        }
+
+        /**
+         * Apply firebreak effect to spread rate
+         * NOTE: Assumes constant wind direction (W→E). Real implementation would use actual wind data.
+         * 
+         * @param {number} x - Target cell x coordinate
+         * @param {number} y - Target cell y coordinate
+         * @param {number} originalROS - Original rate of spread (m/min)
+         * @returns {number} - Modified ROS after firebreak effect
+         */
+        function applyFirebreakEffect(x, y, originalROS) {
+            // If simulating without firebreaks, return original ROS
+            if (fireSimulation.simulationMode === 'without') {
+                return originalROS;
+            }
+
+            // If no firebreak mask exists, return original ROS
+            if (!fireSimulation.firebreakMask) {
+                return originalROS;
+            }
+
+            // Check if target cell is a firebreak
+            if (fireSimulation.firebreakMask[y] && fireSimulation.firebreakMask[y][x]) {
+                // Apply slowdown factor (0 = full block, 0.2 = 80% slower)
+                if (fireSimulation.FIREBREAK_SLOWDOWN_FACTOR === 0) {
+                    return 0; // Complete block
+                } else {
+                    return originalROS * fireSimulation.FIREBREAK_SLOWDOWN_FACTOR;
+                }
+            }
+
+            return originalROS;
+        }
+
+        function getCellSpreadFactor(x, y) {
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                return 0;
+            }
+            
+            const spreadFactor = stats.min !== stats.max 
+                ? (value - stats.min) / (stats.max - stats.min)
+                : 0.5;
+            
+            return Math.max(0, spreadFactor);
+        }
+
+        function hasPathToCell(fromX, fromY, toX, toY) {
+            // Check if there's a valid path (no water barriers) between cells
+            // Use Bresenham's line algorithm to check all cells along the path
+            const dx = Math.abs(toX - fromX);
+            const dy = Math.abs(toY - fromY);
+            const sx = fromX < toX ? 1 : -1;
+            const sy = fromY < toY ? 1 : -1;
+            let err = dx - dy;
+            
+            let x = fromX;
+            let y = fromY;
+            
+            while (true) {
+                // Check if current cell in path has fuel
+                const value = georaster.values[0][y]?.[x];
+                if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                    return false; // Water/barrier blocks the path
+                }
+                
+                if (x === toX && y === toY) break;
+                
+                const e2 = 2 * err;
+                if (e2 > -dy) {
+                    err -= dy;
+                    x += sx;
+                }
+                if (e2 < dx) {
+                    err += dx;
+                    y += sy;
+                }
+            }
+            
+            return true;
+        }
+
+        function simulateFireStep() {
+            if (!fireSimulation.active || fireSimulation.fireFront.length === 0) {
+                stopFireAnimation();
+                return;
+            }
+
+            fireSimulation.currentTime += fireSimulation.timeStepHours;
+            const newFrontSet = new Map(); // Use Map to avoid duplicates and store best ROS
+
+            // Process each cell in the fire front
+            for (const cell of fireSimulation.fireFront) {
+                const { x, y } = cell;
+                const cellKey = `${x},${y}`;
+                
+                // Mark current cell as burned
+                if (!fireSimulation.burnedCells.has(cellKey)) {
+                    const value = georaster.values[0][y]?.[x];
+                    // Only burn if it has fuel
+                    if (value && value !== georaster.noDataValue && !isNaN(value) && value > 0) {
+                        fireSimulation.burnedCells.add(cellKey);
+                    } else {
+                        continue; // Skip if no fuel
+                    }
+                }
+
+                const spreadFactor = getCellSpreadFactor(x, y);
+                
+                // Skip if spread factor is too low (no fuel)
+                if (spreadFactor < fireSimulation.minSpreadThreshold) continue;
+
+                // Calculate Rate of Spread (ROS) in meters per minute
+                const ros = calculateROS(spreadFactor);
+                
+                // Calculate how far fire can spread in this time step
+                const spreadDistanceMeters = calculateSpreadDistance(ros, fireSimulation.timeStepHours);
+                
+                // Convert to number of cells
+                const spreadRadiusCells = Math.ceil(spreadDistanceMeters / fireSimulation.pixelSizeMeters);
+                const maxSearchRadius = Math.min(spreadRadiusCells, 8); // Cap at 8 cells for performance
+
+                // Only check adjacent and diagonal neighbors first for better performance
+                const neighbors = [
+                    [-1, -1], [-1, 0], [-1, 1],
+                    [0, -1],           [0, 1],
+                    [1, -1],  [1, 0],  [1, 1]
+                ];
+
+                // Check immediate neighbors first
+                for (const [dx, dy] of neighbors) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    const nKey = `${nx},${ny}`;
+
+                    if (!canCellBurn(nx, ny)) continue;
+
+                    const cellDistance = Math.sqrt(dx * dx + dy * dy);
+                    const distanceMeters = cellDistance * fireSimulation.pixelSizeMeters;
+
+                    if (distanceMeters <= spreadDistanceMeters) {
+                        const neighborSF = getCellSpreadFactor(nx, ny);
+                        
+                        if (neighborSF >= fireSimulation.minSpreadThreshold) {
+                            let neighborROS = calculateROS(neighborSF);
+                            
+                            // Apply firebreak effect if simulating with firebreaks
+                            neighborROS = applyFirebreakEffect(nx, ny, neighborROS);
+                            
+                            // If firebreak completely blocks (ROS = 0), skip this cell
+                            if (neighborROS <= 0) {
+                                continue;
+                            }
+                            
+                            // Recalculate spread distance with modified ROS
+                            const modifiedSpreadDistance = calculateSpreadDistance(neighborROS, fireSimulation.timeStepHours);
+                            if (distanceMeters <= modifiedSpreadDistance) {
+                                // Store the best (highest) ROS for this cell
+                                if (!newFrontSet.has(nKey) || newFrontSet.get(nKey).ros < neighborROS) {
+                                    newFrontSet.set(nKey, { 
+                                        x: nx, 
+                                        y: ny, 
+                                        time: fireSimulation.currentTime,
+                                        ros: neighborROS
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // For longer-range spread, check if path is clear
+                if (spreadRadiusCells > 2) {
+                    for (let dx = -maxSearchRadius; dx <= maxSearchRadius; dx++) {
+                        for (let dy = -maxSearchRadius; dy <= maxSearchRadius; dy++) {
+                            // Skip already checked immediate neighbors
+                            if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) continue;
+                            
+                            const nx = x + dx;
+                            const ny = y + dy;
+                            const nKey = `${nx},${ny}`;
+
+                            if (!canCellBurn(nx, ny)) continue;
+
+                            const cellDistance = Math.sqrt(dx * dx + dy * dy);
+                            const distanceMeters = cellDistance * fireSimulation.pixelSizeMeters;
+
+                            if (distanceMeters <= spreadDistanceMeters) {
+                                // Check if there's a valid path (no water barriers)
+                                if (!hasPathToCell(x, y, nx, ny)) continue;
+
+                                const neighborSF = getCellSpreadFactor(nx, ny);
+                                
+                                if (neighborSF >= fireSimulation.minSpreadThreshold) {
+                                    let neighborROS = calculateROS(neighborSF);
+                                    
+                                    // Apply firebreak effect if simulating with firebreaks
+                                    neighborROS = applyFirebreakEffect(nx, ny, neighborROS);
+                                    
+                                    // If firebreak completely blocks (ROS = 0), skip this cell
+                                    if (neighborROS <= 0) {
+                                        continue;
+                                    }
+                                    
+                                    // Recalculate spread distance with modified ROS
+                                    const modifiedSpreadDistance = calculateSpreadDistance(neighborROS, fireSimulation.timeStepHours);
+                                    if (distanceMeters <= modifiedSpreadDistance) {
+                                        // Add some randomness for longer distances
+                                        const spreadChance = 0.7 + Math.random() * 0.3;
+                                        if (spreadChance > 0.6) {
+                                            if (!newFrontSet.has(nKey) || newFrontSet.get(nKey).ros < neighborROS) {
+                                                newFrontSet.set(nKey, { 
+                                                    x: nx, 
+                                                    y: ny, 
+                                                    time: fireSimulation.currentTime,
+                                                    ros: neighborROS
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Convert Map to Array for next iteration
+            fireSimulation.fireFront = Array.from(newFrontSet.values());
+            
+            // Track metrics for this time step
+            trackSimulationMetrics();
+            
+            updateFireVisualization(fireSimulation.currentTime);
+
+            if (fireSimulation.currentTime >= fireSimulation.maxTime || fireSimulation.fireFront.length === 0) {
+                stopFireAnimation();
+            }
+        }
+
+        /**
+         * Track simulation metrics for comparison
+         */
+        function trackSimulationMetrics() {
+            const mode = fireSimulation.simulationMode;
+            const burnedCount = fireSimulation.burnedCells.size;
+            
+            // Store burned count at this time step
+            if (!simulationMetrics[mode].burnedCountOverTime[fireSimulation.currentTime]) {
+                simulationMetrics[mode].burnedCountOverTime[fireSimulation.currentTime] = burnedCount;
+            }
+            
+            // Update final count
+            simulationMetrics[mode].finalBurnedCount = burnedCount;
+            
+            // Calculate current spread rate (km/h)
+            const pixelAreaDegrees = georaster.pixelWidth * georaster.pixelHeight;
+            const degToKm = 111;
+            const areaKm2 = burnedCount * pixelAreaDegrees * degToKm * degToKm;
+            const spreadRate = fireSimulation.currentTime > 0 ? (areaKm2 / fireSimulation.currentTime) * 60 / 1000 : 0;
+            
+            if (spreadRate > simulationMetrics[mode].maxSpreadRate) {
+                simulationMetrics[mode].maxSpreadRate = spreadRate;
+            }
+            
+            // Update impact summary display
+            updateImpactSummary();
+        }
+
+        function updateFireVisualization(time) {
+            if (!fireSimulation.fireLayer) return;
+
+            // Clear previous fire visualization (except marker)
+            fireSimulation.fireLayer.eachLayer(layer => {
+                if (layer !== fireSimulation.fireMarker) {
+                    fireSimulation.fireLayer.removeLayer(layer);
+                }
+            });
+
+            // Draw burned area
+            const burnedPolygons = [];
+            fireSimulation.burnedCells.forEach(cellKey => {
+                const [x, y] = cellKey.split(',').map(Number);
+                
+                const lng1 = georaster.xmin + x * georaster.pixelWidth;
+                const lng2 = lng1 + georaster.pixelWidth;
+                const lat1 = georaster.ymax - y * georaster.pixelHeight;
+                const lat2 = lat1 - georaster.pixelHeight;
+
+                const bounds = [[lat2, lng1], [lat1, lng2]];
+                
+                const intensity = 0.3 + Math.random() * 0.4;
+                L.rectangle(bounds, {
+                    color: '#ff4500',
+                    weight: 0,
+                    fillColor: '#ff4500',
+                    fillOpacity: intensity
+                }).addTo(fireSimulation.fireLayer);
+            });
+
+            // Update statistics
+            // Calculate burned area in km²
+            const pixelAreaDegrees = georaster.pixelWidth * georaster.pixelHeight;
+            // Convert from degrees² to km² (at Cyprus latitude ~35°)
+            const degToKm = 111; // km per degree latitude
+            const approxAreaKm2 = (fireSimulation.burnedCells.size * pixelAreaDegrees * degToKm * degToKm).toFixed(2);
+            
+            // Calculate average ROS in m/min then convert to km/h for display
+            const avgSpreadRate = time > 0 ? ((parseFloat(approxAreaKm2) / time) * 60 / 1000).toFixed(3) : '0.000';
+
+            document.getElementById('currentTime').textContent = time;
+            document.getElementById('timelineSlider').value = time;
+            document.getElementById('burnedArea').textContent = approxAreaKm2;
+            document.getElementById('spreadRate').textContent = avgSpreadRate;
+        }
+
+        function playFireAnimation() {
+            if (fireSimulation.playing) return;
+            
+            fireSimulation.playing = true;
+            document.getElementById('playBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = false;
+
+            fireSimulation.animationInterval = setInterval(() => {
+                simulateFireStep();
+            }, 500); // 500ms per hour
+        }
+
+        function stopFireAnimation() {
+            fireSimulation.playing = false;
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            
+            if (fireSimulation.animationInterval) {
+                clearInterval(fireSimulation.animationInterval);
+                fireSimulation.animationInterval = null;
+            }
+        }
+
+        function clearFireSimulation() {
+            stopFireAnimation();
+            
+            if (fireSimulation.fireLayer) {
+                map.removeLayer(fireSimulation.fireLayer);
+                fireSimulation.fireLayer = null;
+            }
+
+            fireSimulation.active = false;
+            fireSimulation.ignitionPoint = null;
+            fireSimulation.currentTime = 0;
+            fireSimulation.burnedCells.clear();
+            fireSimulation.fireFront = [];
+            fireSimulation.fireMarker = null;
+
+            document.getElementById('playBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = true;
+            document.getElementById('clearBtn').disabled = true;
+            document.getElementById('timelineContainer').style.display = 'none';
+            
+            // Update impact summary (may show previous results)
+            updateImpactSummary();
+            updateHeaderStats();
+        }
+
+        /**
+         * Update the impact summary display
+         */
+        function updateImpactSummary() {
+            const summaryDiv = document.getElementById('impactSummary');
+            const contentDiv = document.getElementById('impactContent');
+            
+            const without = simulationMetrics.without;
+            const withBreaks = simulationMetrics.with;
+            
+            // Check if we have any data
+            const hasWithout = without.finalBurnedCount > 0 || without.burnedCountOverTime.length > 0;
+            const hasWith = withBreaks.finalBurnedCount > 0 || withBreaks.burnedCountOverTime.length > 0;
+            
+            if (!hasWithout && !hasWith) {
+                summaryDiv.style.display = 'none';
+                return;
+            }
+            
+            summaryDiv.style.display = 'block';
+            
+            // Calculate area in km²
+            const pixelAreaDegrees = georaster.pixelWidth * georaster.pixelHeight;
+            const degToKm = 111;
+            
+            if (hasWithout && hasWith) {
+                // Both scenarios available - show comparison
+                const withoutArea = (without.finalBurnedCount * pixelAreaDegrees * degToKm * degToKm).toFixed(2);
+                const withArea = (withBreaks.finalBurnedCount * pixelAreaDegrees * degToKm * degToKm).toFixed(2);
+                
+                const reduction = without.finalBurnedCount > 0 
+                    ? (100 * (1 - withBreaks.finalBurnedCount / without.finalBurnedCount)).toFixed(1)
+                    : 0;
+                
+                contentDiv.innerHTML = `
+                    <div class="data-row">
+                        <span class="data-label"><strong>No Firebreaks:</strong></span>
+                        <span class="data-value">${without.finalBurnedCount.toLocaleString()} cells (${withoutArea} km²)</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label"><strong>With Firebreaks:</strong></span>
+                        <span class="data-value">${withBreaks.finalBurnedCount.toLocaleString()} cells (${withArea} km²)</span>
+                    </div>
+                    <div class="data-row" style="background: #d4edda; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                        <div style="width: 100%;">
+                            <strong style="color: #155724;">Firebreak Impact: ${reduction}% reduction in burned area</strong><br>
+                            <small style="color: #155724;">Firebreaks slowed or blocked the fire in high-risk corridors, turning a potential disaster into a smaller, controllable fire.</small>
+                        </div>
+                    </div>
+                    ${generateComparisonChart()}
+                `;
+            } else if (hasWithout) {
+                // Only without firebreaks
+                const area = (without.finalBurnedCount * pixelAreaDegrees * degToKm * degToKm).toFixed(2);
+                contentDiv.innerHTML = `
+                    <div class="data-row">
+                        <span class="data-label"><strong>Total burned area:</strong></span>
+                        <span class="data-value">${without.finalBurnedCount.toLocaleString()} cells (${area} km² approx)</span>
+                    </div>
+                    <div style="font-size: 12px; color: #6c757d; margin-top: 8px;">
+                        Run simulation with firebreaks to see impact comparison.
+                    </div>
+                `;
+            } else if (hasWith) {
+                // Only with firebreaks
+                const area = (withBreaks.finalBurnedCount * pixelAreaDegrees * degToKm * degToKm).toFixed(2);
+                contentDiv.innerHTML = `
+                    <div class="data-row">
+                        <span class="data-label"><strong>Total burned area:</strong></span>
+                        <span class="data-value">${withBreaks.finalBurnedCount.toLocaleString()} cells (${area} km² approx)</span>
+                    </div>
+                    <div style="font-size: 12px; color: #6c757d; margin-top: 8px;">
+                        Run simulation without firebreaks to see impact comparison.
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Generate a simple comparison chart using SVG
+         */
+        function generateComparisonChart() {
+            const without = simulationMetrics.without.burnedCountOverTime;
+            const withBreaks = simulationMetrics.with.burnedCountOverTime;
+            
+            if (without.length === 0 && withBreaks.length === 0) {
+                return '';
+            }
+            
+            // Find max values for scaling
+            const maxTime = Math.max(
+                without.length > 0 ? without.length - 1 : 0,
+                withBreaks.length > 0 ? withBreaks.length - 1 : 0
+            );
+            
+            // Handle sparse arrays - filter out undefined/null values
+            const withoutValues = without.filter(v => v !== undefined && v !== null);
+            const withBreaksValues = withBreaks.filter(v => v !== undefined && v !== null);
+            
+            const maxBurned = Math.max(
+                withoutValues.length > 0 ? Math.max(...withoutValues) : 0,
+                withBreaksValues.length > 0 ? Math.max(...withBreaksValues) : 0
+            );
+            
+            if (maxTime === 0 || maxBurned === 0) {
+                return '';
+            }
+            
+            const width = 300;
+            const height = 150;
+            const padding = 40;
+            const chartWidth = width - padding * 2;
+            const chartHeight = height - padding * 2;
+            
+            let svg = `<svg width="${width}" height="${height}" style="margin-top: 10px; border: 1px solid #dee2e6; border-radius: 5px;">
+                <text x="${width/2}" y="15" text-anchor="middle" font-size="12" font-weight="bold">Burned Area Over Time</text>
+                <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#333" stroke-width="2"/>
+                <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#333" stroke-width="2"/>
+                <text x="${width/2}" y="${height - 5}" text-anchor="middle" font-size="10">Time (hours)</text>
+                <text x="10" y="${height/2}" text-anchor="middle" font-size="10" transform="rotate(-90, 10, ${height/2})">Burned Cells</text>
+            `;
+            
+            // Draw "Without Firebreaks" line
+            if (without.length > 0) {
+                let path = '';
+                let lastCount = 0;
+                without.forEach((count, time) => {
+                    if (count !== undefined && count !== null) {
+                        const x = padding + (time / maxTime) * chartWidth;
+                        const y = height - padding - (count / maxBurned) * chartHeight;
+                        path += (time === 0 ? 'M' : 'L') + ` ${x} ${y}`;
+                        lastCount = count;
+                    }
+                });
+                if (path) {
+                    svg += `<path d="${path}" fill="none" stroke="#dc3545" stroke-width="2"/>`;
+                    const lastTime = without.length - 1;
+                    if (lastCount > 0 && lastTime >= 0) {
+                        svg += `<circle cx="${padding + (lastTime / maxTime) * chartWidth}" cy="${height - padding - (lastCount / maxBurned) * chartHeight}" r="3" fill="#dc3545"/>`;
+                    }
+                }
+            }
+            
+            // Draw "With Firebreaks" line
+            if (withBreaks.length > 0) {
+                let path = '';
+                let lastCount = 0;
+                withBreaks.forEach((count, time) => {
+                    if (count !== undefined && count !== null) {
+                        const x = padding + (time / maxTime) * chartWidth;
+                        const y = height - padding - (count / maxBurned) * chartHeight;
+                        path += (time === 0 ? 'M' : 'L') + ` ${x} ${y}`;
+                        lastCount = count;
+                    }
+                });
+                if (path) {
+                    svg += `<path d="${path}" fill="none" stroke="#28a745" stroke-width="2" stroke-dasharray="5,5"/>`;
+                    const lastTime = withBreaks.length - 1;
+                    if (lastCount > 0 && lastTime >= 0) {
+                        svg += `<circle cx="${padding + (lastTime / maxTime) * chartWidth}" cy="${height - padding - (lastCount / maxBurned) * chartHeight}" r="3" fill="#28a745"/>`;
+                    }
+                }
+            }
+            
+            // Legend
+            svg += `<rect x="${width - 100}" y="25" width="12" height="2" fill="#dc3545"/>`;
+            svg += `<text x="${width - 85}" y="32" font-size="10">No Firebreaks</text>`;
+            svg += `<line x1="${width - 100}" y1="40" x2="${width - 88}" y2="40" stroke="#28a745" stroke-width="2" stroke-dasharray="5,5"/>`;
+            svg += `<text x="${width - 85}" y="47" font-size="10">With Firebreaks</text>`;
+            
+            svg += '</svg>';
+            return svg;
+        }
+
+        // Event listeners for controls
+        document.getElementById('playBtn').addEventListener('click', playFireAnimation);
+        document.getElementById('pauseBtn').addEventListener('click', stopFireAnimation);
+        document.getElementById('clearBtn').addEventListener('click', clearFireSimulation);
+
+        document.getElementById('timelineSlider').addEventListener('input', (e) => {
+            const targetTime = parseInt(e.target.value);
+            
+            if (targetTime < fireSimulation.currentTime) {
+                // Reset and replay to target time
+                const ignition = fireSimulation.ignitionPoint;
+                if (ignition) {
+                    initializeFire(ignition.lat, ignition.lng);
+                    for (let i = 0; i < targetTime; i++) {
+                        simulateFireStep();
+                    }
+                }
+            } else {
+                // Advance to target time
+                while (fireSimulation.currentTime < targetTime && fireSimulation.fireFront.length > 0) {
+                    simulateFireStep();
+                }
+            }
+        });
+
+        // ============================================================================
+        // FIREBREAK SUGGESTION FUNCTIONS
+        // ============================================================================
+
+        /**
+         * Compute and display recommended firebreaks based on high-risk corridors
+         * Rules:
+         * 1. Place across high-dryness corridors (normalized risk ≥ 0.7)
+         * 2. Perpendicular to wind direction (W→E wind → N→S firebreaks)
+         * 
+         * NOTE: This is a simplified prototype. Real implementation would use:
+         * - Actual wind direction data (currently assumes W→E)
+         * - More sophisticated corridor detection (clustering algorithms)
+         * - Terrain accessibility analysis
+         */
+        function computeFirebreaks() {
+            if (!georaster || !firebreakLayer) return;
+
+            // Clear existing firebreaks
+            firebreakLayer.clearLayers();
+
+            const highRiskThreshold = 0.7; // Normalized risk threshold
+            const sampleStep = 10; // Sample every Nth pixel for performance
+            const maxFirebreaks = 25; // Limit number of firebreaks for performance
+
+            const firebreaks = [];
+            const processedSegments = new Set();
+
+            // Firebreak width in pixels (spans east-west across high-risk corridor)
+            const firebreakWidth = 3; // pixels to each side
+
+            // Sample the raster to find high-risk corridors
+            // For simplicity, we'll look for north-south oriented high-risk bands
+            for (let x = 0; x < georaster.width; x += sampleStep) {
+                let segmentStart = null;
+                let segmentLength = 0;
+                let maxRiskInSegment = 0;
+
+                // Scan along this column (north-south)
+                for (let y = 0; y < georaster.height; y++) {
+                    const value = georaster.values[0][y]?.[x];
+                    if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                        // End of segment
+                        if (segmentStart !== null && segmentLength >= 5 && maxRiskInSegment >= highRiskThreshold) {
+                            // Found a high-risk segment
+                            const segmentKey = `${x}-${segmentStart}-${y}`;
+                            if (!processedSegments.has(segmentKey)) {
+                                processedSegments.add(segmentKey);
+                                
+                                // Calculate center of segment
+                                const centerY = segmentStart + Math.floor(segmentLength / 2);
+                                
+                                // Create firebreak perpendicular to wind (W→E → N→S)
+                                // Firebreak spans east-west across the high-risk corridor
+                                const startX = Math.max(0, x - firebreakWidth);
+                                const endX = Math.min(georaster.width - 1, x + firebreakWidth);
+                                
+                                // Convert to lat/lng
+                                const lat1 = georaster.ymax - centerY * georaster.pixelHeight;
+                                const lng1 = georaster.xmin + startX * georaster.pixelWidth;
+                                const lng2 = georaster.xmin + endX * georaster.pixelWidth;
+                                
+                                firebreaks.push({
+                                    lat: lat1,
+                                    lng1: lng1,
+                                    lng2: lng2,
+                                    risk: maxRiskInSegment
+                                });
+                            }
+                        }
+                        segmentStart = null;
+                        segmentLength = 0;
+                        maxRiskInSegment = 0;
+                        continue;
+                    }
+
+                    const normalized = normalizeValue(value);
+                    if (normalized !== null && normalized >= highRiskThreshold) {
+                        if (segmentStart === null) {
+                            segmentStart = y;
+                        }
+                        segmentLength++;
+                        maxRiskInSegment = Math.max(maxRiskInSegment, normalized);
+                    } else {
+                        // End of high-risk segment
+                        if (segmentStart !== null && segmentLength >= 5 && maxRiskInSegment >= highRiskThreshold) {
+                            const segmentKey = `${x}-${segmentStart}-${y}`;
+                            if (!processedSegments.has(segmentKey)) {
+                                processedSegments.add(segmentKey);
+                                
+                                const centerY = segmentStart + Math.floor(segmentLength / 2);
+                                const startX = Math.max(0, x - firebreakWidth);
+                                const endX = Math.min(georaster.width - 1, x + firebreakWidth);
+                                
+                                const lat1 = georaster.ymax - centerY * georaster.pixelHeight;
+                                const lng1 = georaster.xmin + startX * georaster.pixelWidth;
+                                const lng2 = georaster.xmin + endX * georaster.pixelWidth;
+                                
+                                firebreaks.push({
+                                    lat: lat1,
+                                    lng1: lng1,
+                                    lng2: lng2,
+                                    risk: maxRiskInSegment
+                                });
+                            }
+                        }
+                        segmentStart = null;
+                        segmentLength = 0;
+                        maxRiskInSegment = 0;
+                    }
+                }
+            }
+
+            // Limit number of firebreaks and draw them
+            const selectedFirebreaks = firebreaks
+                .sort((a, b) => b.risk - a.risk) // Sort by risk (highest first)
+                .slice(0, maxFirebreaks);
+
+            selectedFirebreaks.forEach(fb => {
+                // Draw firebreak as a polyline (east-west, perpendicular to W→E wind)
+                const polyline = L.polyline(
+                    [[fb.lat, fb.lng1], [fb.lat, fb.lng2]],
+                    {
+                        color: '#00ffff', // Cyan (bright blue-green for visibility)
+                        weight: 3,
+                        opacity: 0.8,
+                        dashArray: '10, 5'
+                    }
+                ).addTo(firebreakLayer);
+
+                // Add popup with firebreak information
+                polyline.bindPopup(`
+                    <div class="popup-title">Recommended Firebreak</div>
+                    <div style="margin-top: 5px;">
+                        <strong>Reason:</strong> High dryness corridor (risk ≥ ${(highRiskThreshold * 100).toFixed(0)}%)<br>
+                        <strong>Wind:</strong> W→E<br>
+                        <strong>Placement:</strong> N→S to block spread<br>
+                        <strong>Risk Level:</strong> ${(fb.risk * 100).toFixed(1)}%
+                    </div>
+                `);
+            });
+
+            console.log(`Generated ${selectedFirebreaks.length} recommended firebreaks`);
+        }
+
+        /**
+         * Rasterize firebreak polylines into a grid mask
+         * NOTE: This is an approximate rasterization for hackathon demo purposes.
+         * Real implementation would use more sophisticated geometric intersection algorithms.
+         * 
+         * Creates firebreakMask[y][x] = true if cell (x,y) is under or very close to a firebreak line
+         */
+        function rasterizeFirebreaks() {
+            if (!georaster || !firebreakLayer) {
+                fireSimulation.firebreakMask = null;
+                return;
+            }
+
+            // Initialize mask (all false)
+            fireSimulation.firebreakMask = Array(georaster.height).fill(null).map(() => 
+                Array(georaster.width).fill(false)
+            );
+
+            // Get all polylines from firebreak layer
+            const firebreakPolylines = [];
+            firebreakLayer.eachLayer(layer => {
+                if (layer instanceof L.Polyline) {
+                    const latlngs = layer.getLatLngs();
+                    if (latlngs && latlngs.length >= 2) {
+                        firebreakPolylines.push(latlngs);
+                    }
+                }
+            });
+
+            if (firebreakPolylines.length === 0) {
+                return;
+            }
+
+            // For each firebreak polyline, mark cells that intersect or are close to it
+            const proximityThreshold = 1.5; // cells (approximate - for demo)
+            
+            firebreakPolylines.forEach(polyline => {
+                // Convert polyline to pixel coordinates
+                for (let i = 0; i < polyline.length - 1; i++) {
+                    const p1 = polyline[i];
+                    const p2 = polyline[i + 1];
+                    
+                    const x1 = Math.floor((p1.lng - georaster.xmin) / georaster.pixelWidth);
+                    const y1 = Math.floor((georaster.ymax - p1.lat) / georaster.pixelHeight);
+                    const x2 = Math.floor((p2.lng - georaster.xmin) / georaster.pixelWidth);
+                    const y2 = Math.floor((georaster.ymax - p2.lat) / georaster.pixelHeight);
+                    
+                    // Use Bresenham's line algorithm to mark all cells along the line
+                    const dx = Math.abs(x2 - x1);
+                    const dy = Math.abs(y2 - y1);
+                    const sx = x1 < x2 ? 1 : -1;
+                    const sy = y1 < y2 ? 1 : -1;
+                    let err = dx - dy;
+                    
+                    let x = x1;
+                    let y = y1;
+                    
+                    while (true) {
+                        // Mark this cell and nearby cells (for thicker firebreak)
+                        for (let dy = -Math.ceil(proximityThreshold); dy <= Math.ceil(proximityThreshold); dy++) {
+                            for (let dx = -Math.ceil(proximityThreshold); dx <= Math.ceil(proximityThreshold); dx++) {
+                                const nx = x + dx;
+                                const ny = y + dy;
+                                if (nx >= 0 && nx < georaster.width && ny >= 0 && ny < georaster.height) {
+                                    const dist = Math.sqrt(dx * dx + dy * dy);
+                                    if (dist <= proximityThreshold) {
+                                        fireSimulation.firebreakMask[ny][nx] = true;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (x === x2 && y === y2) break;
+                        
+                        const e2 = 2 * err;
+                        if (e2 > -dy) {
+                            err -= dy;
+                            x += sx;
+                        }
+                        if (e2 < dx) {
+                            err += dx;
+                            y += sy;
+                        }
+                    }
+                }
+            });
+
+            console.log(`Rasterized ${firebreakPolylines.length} firebreaks into grid mask`);
+        }
+
+        /**
+         * Toggle firebreak display
+         */
+        function toggleFirebreaks(show) {
+            visualizationState.showFirebreaks = show;
+            if (show) {
+                // Initialize firebreak layer if needed
+                if (!firebreakLayer) {
+                    firebreakLayer = L.layerGroup();
+                }
+                computeFirebreaks();
+                firebreakLayer.addTo(map);
+                
+                // Rasterize firebreaks into grid mask for simulation
+                rasterizeFirebreaks();
+                
+                // Make firebreaks more visible during simulation
+                firebreakLayer.eachLayer(layer => {
+                    if (layer instanceof L.Polyline) {
+                        layer.setStyle({
+                            weight: 4,
+                            opacity: 0.9,
+                            color: '#00ffff'
+                        });
+                    }
+                });
+            } else {
+                if (firebreakLayer) {
+                    firebreakLayer.clearLayers();
+                    if (map.hasLayer(firebreakLayer)) {
+                        map.removeLayer(firebreakLayer);
+                    }
+                }
+                fireSimulation.firebreakMask = null;
+            }
+        }
+
+        // ============================================================================
+        // EVENT LISTENERS FOR UI CONTROLS
+        // ============================================================================
+
+        // Vision mode selector
+        document.querySelectorAll('input[name="visionMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                visualizationState.visionMode = e.target.value;
+                updateRasterLayer();
+                
+                // Show/hide NDWI info
+                const infoDiv = document.getElementById('visionModeInfo');
+                if (e.target.value === 'ndwi') {
+                    infoDiv.style.display = 'block';
+                } else {
+                    infoDiv.style.display = 'none';
+                }
+            });
+        });
+
+        // Layer type radio buttons
+        document.querySelectorAll('input[name="layerType"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                visualizationState.layerType = e.target.value;
+                updateRasterLayer();
+            });
+        });
+
+        // Firebreak toggle
+        document.getElementById('showFirebreaks').addEventListener('change', (e) => {
+            toggleFirebreaks(e.target.checked);
+        });
+
+        // Simulation mode selector (With/Without firebreaks)
+        document.querySelectorAll('input[name="simulationMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                fireSimulation.simulationMode = e.target.value;
+                // If fire is already active, restart with new mode
+                if (fireSimulation.active && fireSimulation.ignitionPoint) {
+                    const ignition = fireSimulation.ignitionPoint;
+                    initializeFire(ignition.lat, ignition.lng);
+                }
+            });
+        });
+
+        // Mode selector (View/Simulate)
+        document.querySelectorAll('input[name="mapMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                fireSimulation.mapMode = e.target.value;
+                map.getContainer().style.cursor = e.target.value === 'simulate' ? 'crosshair' : '';
+            });
+        });
+
+        // Handle map clicks
+        map.on('click', function(e) {
+            if (!georaster) return;
+
+            const { lat, lng } = e.latlng;
+
+            if (fireSimulation.mapMode === 'simulate') {
+                initializeFire(lat, lng);
+                return;
+            }
+
+            // View mode - show pixel values
+            const x = Math.floor((lng - georaster.xmin) / georaster.pixelWidth);
+            const y = Math.floor((georaster.ymax - lat) / georaster.pixelHeight);
+
+            if (x >= 0 && x < georaster.width && y >= 0 && y < georaster.height) {
+                const value = georaster.values[0][y][x];
+                
+                if (value !== null && value !== georaster.noDataValue && !isNaN(value)) {
+                    const normalized = stats.min !== stats.max 
+                        ? ((value - stats.min) / (stats.max - stats.min) * 100).toFixed(1)
+                        : 50;
+
+                    // Update info panel
+                    document.getElementById('location-info').innerHTML = `
+                        <div class="data-row">
+                            <span class="data-label">Latitude:</span>
+                            <span class="data-value">${lat.toFixed(6)}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Longitude:</span>
+                            <span class="data-value">${lng.toFixed(6)}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Pixel X:</span>
+                            <span class="data-value">${x}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Pixel Y:</span>
+                            <span class="data-value">${y}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Raw Value:</span>
+                            <span class="data-value">${value.toFixed(4)}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Risk Level:</span>
+                            <span class="data-value">${normalized}%</span>
+                        </div>
+                    `;
+
+                    // Show popup on map
+                    L.popup()
+                        .setLatLng(e.latlng)
+                        .setContent(`
+                            <div class="popup-title">Fire Risk Data</div>
+                            <div class="popup-value">Value: ${value.toFixed(4)}</div>
+                            <div style="margin-top: 5px;">Risk Level: ${normalized}%</div>
+                        `)
+                        .openOn(map);
+                } else {
+                    document.getElementById('location-info').innerHTML = `
+                        <div class="data-row">
+                            <span class="data-label">No data at this location</span>
+                        </div>
+                    `;
+                }
+            }
+        });
+
+        // Load the GeoTIFF when page loads
+        loadGeoTIFF();
+    </script>
+</body>
+</html>
