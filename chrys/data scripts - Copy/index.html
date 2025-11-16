@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyprus Fire Risk Data Visualization - IgniteGuard ROS</title>
+    
+    <!-- External Libraries -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <!-- Header -->
+    <div id="header">
+        <h1>🔥 Limassol 2025 Fire Risk Visualization</h1>
+        <div id="subtitle">IgniteGuard ROS Model - Tile-Based Analysis (100m Resolution)</div>
+    </div>
+
+    <!-- Main Container -->
+    <div id="container">
+        <!-- Map -->
+        <div id="map"></div>
+        
+        <!-- Info Panel -->
+        <div id="info-panel">
+            <!-- Simulation Controls -->
+            <div id="simulation-controls">
+                <h3 style="color: #667eea; font-size: 16px; margin-bottom: 10px;">🔥 Fire Simulation</h3>
+                
+                <!-- Overlay Toggle -->
+                <div class="toggle-switch" id="overlayToggle">
+                    <span>🗺️ Show Risk Overlay</span>
+                    <label class="switch">
+                        <input type="checkbox" id="overlayCheckbox" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Mode Selector -->
+                <div class="mode-selector">
+                    <label>
+                        <input type="radio" name="mapMode" value="view" checked>
+                        <span>📊 View Data (Click to inspect)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="mapMode" value="simulate">
+                        <span>🔥 Start Fire (Click to ignite)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="mapMode" value="firebreak">
+                        <span>🚧 Firebreak (Click & drag)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="mapMode" value="waterdrop">
+                        <span>💧 Water Drop (Click to place)</span>
+                    </label>
+                </div>
+
+                <!-- Suppression Controls -->
+                <div id="suppression-controls" style="background: rgba(255, 107, 0, 0.1); padding: 10px; border-radius: 5px; margin: 10px 0; border: 1px solid rgba(255, 107, 0, 0.3); display: none;">
+                    <h4 style="color: #ff6b00; font-size: 13px; margin-bottom: 8px;">🛡️ Suppression Tools</h4>
+                    
+                    <div class="control-group">
+                        <label for="firebreak-width">Firebreak Width: <strong><span id="firebreak-width-value">100</span> m</strong></label>
+                        <input type="range" id="firebreak-width" min="50" max="500" value="100" step="50">
+                    </div>
+
+                    <div class="control-group">
+                        <label for="waterdrop-radius">Water Drop Radius: <strong><span id="waterdrop-radius-value">300</span> m</strong></label>
+                        <input type="range" id="waterdrop-radius" min="100" max="1000" value="300" step="50">
+                    </div>
+
+                    <div style="font-size: 12px; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 5px; color: #b0b0b0;">
+                        <div>Firebreaks: <strong id="firebreak-count" style="color: #ff6b00;">0</strong></div>
+                        <div>Water Drops: <strong id="waterdrop-count" style="color: #00bfff;">0</strong></div>
+                        <button class="btn btn-danger" id="clear-suppression-btn" style="width: 100%; margin-top: 8px; font-size: 11px; padding: 6px;">Clear All Suppressions</button>
+                    </div>
+                </div>
+
+                <!-- Playback Controls -->
+                <div class="control-buttons">
+                    <button class="btn btn-success" id="play-pause-btn" disabled>▶️ Play</button>
+                    <button class="btn btn-primary" id="step-btn" disabled>⏭️ Step</button>
+                    <button class="btn btn-danger" id="reset-btn" disabled>🔄 Reset</button>
+                </div>
+
+                <!-- Simulation Duration -->
+                <div style="margin: 10px 0;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Simulation Duration (days):</label>
+                    <input type="number" id="simulationDays" min="1" max="30" value="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                </div>
+
+                <!-- Wind Controls -->
+                <div style="background: #e9ecef; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px;">🌬️ Wind Conditions</h4>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px;">Wind Speed:</label>
+                        <input type="range" id="wind-speed" min="0" max="100" value="0" style="width: 100%;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6c757d;">
+                            <span>0</span>
+                            <span id="wind-speed-value">0 km/h</span>
+                            <span>100</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px;">Wind Direction:</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="range" id="wind-direction" min="0" max="360" value="0" style="flex: 1;">
+                            <div style="width: 40px; height: 40px; border: 2px solid #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; background: white;">
+                                ➤
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6c757d; margin-top: 5px;">
+                            <span>N (0°)</span>
+                            <span id="wind-direction-value">0° N</span>
+                            <span>N (360°)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Simulation Info -->
+                <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px;">📊 Simulation Status</h4>
+                    <div style="font-size: 12px;">
+                        <div>Time: <strong id="current-time">0 hours</strong></div>
+                        <div>Burned Area: <strong id="burned-area">0 ha</strong></div>
+                        <div>Fire Perimeter: <strong id="fire-perimeter">0 m</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="click-instruction">
+                📍 Select mode above, then click on map
+            </div>
+
+            <!-- Statistics Section -->
+            <div class="info-section">
+                <h3>📊 Statistics</h3>
+                <div id="stats">
+                    <div class="loading">Loading data...</div>
+                </div>
+            </div>
+
+            <!-- Location Info Section -->
+            <div class="info-section">
+                <h3>📍 Selected Location</h3>
+                <div id="location-info">
+                    <div class="data-row">
+                        <span class="data-label">Click on map to view data</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Legend Section -->
+            <div class="info-section legend">
+                <h4>🎨 Color Legend</h4>
+                <div id="legend-items"></div>
+            </div>
+
+            <!-- About Section -->
+            <div class="info-section">
+                <h3>ℹ️ About</h3>
+                <p style="font-size: 13px; line-height: 1.6; color: #6c757d;">
+                    This visualization uses the <strong>IgniteGuard ROS (Rate of Spread) Model</strong> 
+                    for Cyprus fire behavior prediction. The model calculates:
+                    <br><br>
+                    <code style="font-size: 11px; display: block; background: #f8f9fa; padding: 5px; border-radius: 3px; margin: 5px 0;">
+                    ROS = SF_norm × 30 m/min<br>
+                    where SF = Fuel × Dryness × LowWater × (1 + Slope)
+                    </code>
+                    <br>
+                    Components derived from Sentinel-2 (NDVI, NDWI) and SRTM elevation data.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- External Libraries -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Custom JavaScript Modules -->
+    <script src="config.js"></script>
+    <script src="geoJsonLoader.js"></script>
+    <script src="suppressionTools.js"></script>
+    <script src="fireSimulationTiles.js"></script>
+    <script src="uiControlsTiles.js"></script>
+    
+    <!-- Main Initialization -->
+    <script>
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('🔥 IgniteGuard Kouris Dam Fire Risk Visualization');
+            console.log('Initializing map and loading tile data...');
+            
+            // Initialize map
+            const map = L.map('map').setView([34.779, 32.922], 13);
+            
+            // Add base map layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(map);
+            
+            // Make map globally accessible
+            window.myMap = map;
+            
+            // Load GeoJSON tile data
+            await GeoJSONLoader.loadGeoJSON('IgniteGuard_Limassol2025Fire_ROS_tiles_100m_JSON.geojson');
+            
+            // Render tiles on map
+            GeoJSONLoader.renderTiles(map);
+            
+            // Update statistics display
+            GeoJSONLoader.updateStatisticsDisplay();
+            
+            // Create legend
+            GeoJSONLoader.createLegend();
+            
+            // Create virtual grid for fire simulation
+            const grid = GeoJSONLoader.createVirtualGrid();
+            window.fireGrid = grid;
+            
+            // Initialize suppression tools
+            if (typeof SuppressionTools !== 'undefined') {
+                SuppressionTools.init(map);
+            } else {
+                console.warn('SuppressionTools not loaded - suppression features disabled');
+            }
+            
+            // Initialize UI controls
+            UIControls.init();
+            
+            console.log('✅ Application initialized successfully');
+            console.log('📍 Kouris Dam AOI loaded with', GeoJSONLoader.tiles.length, 'tiles');
+        });
+    </script>
+</body>
+</html>

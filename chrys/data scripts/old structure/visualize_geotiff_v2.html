@@ -1,0 +1,1761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyprus Fire Risk Data Visualization</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        #subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        #container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #map {
+            flex: 1;
+            height: 100%;
+        }
+
+        #info-panel {
+            width: 350px;
+            background: #f8f9fa;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+        }
+
+        #simulation-controls {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            margin-bottom: 15px;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .timeline-container {
+            margin: 15px 0;
+        }
+
+        .timeline-slider {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .timeline-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .mode-selector {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        .mode-selector label {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+
+        .mode-selector input[type="radio"] {
+            margin-right: 8px;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 5px;
+            margin: 10px 0;
+            cursor: pointer;
+        }
+
+        .toggle-switch:hover {
+            background: #dee2e6;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #667eea;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .info-section {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .info-section h3 {
+            color: #667eea;
+            font-size: 16px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 5px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .data-row:last-child {
+            border-bottom: none;
+        }
+
+        .data-label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .data-value {
+            color: #212529;
+            font-weight: 500;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .legend {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .legend h4 {
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 20px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+        }
+
+        .click-instruction {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            color: #856404;
+        }
+
+        .leaflet-popup-content {
+            margin: 10px;
+            min-width: 200px;
+        }
+
+        .popup-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .popup-value {
+            font-size: 18px;
+            color: #212529;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🔥 Cyprus Fire Risk Data Visualization</h1>
+        <div id="subtitle">Spread Rate, Fuel Dryness & Slope Analysis</div>
+    </div>
+
+    <div id="container">
+        <div id="map"></div>
+        <div id="info-panel">
+            <div id="simulation-controls">
+                <h3 style="color: #667eea; font-size: 16px; margin-bottom: 10px;">🔥 Fire Simulation</h3>
+                
+                <div class="toggle-switch" id="overlayToggle">
+                    <span>🗺️ Show Risk Overlay</span>
+                    <label class="switch">
+                        <input type="checkbox" id="overlayCheckbox" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="mode-selector">
+                    <label>
+                        <input type="radio" name="mapMode" value="view" checked>
+                        <span>View Data (Click to inspect)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="mapMode" value="simulate">
+                        <span>🔥 Start Fire (Click to ignite)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="mapMode" value="firebreak">
+                        <span>🚧 Draw Firebreak (Click & drag)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="mapMode" value="waterdrop">
+                        <span>💧 Water Bomb (Click to drop)</span>
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <label for="firebreakWidth">Firebreak Width: <strong><span id="firebreakWidthValue">0.1</span> km</strong></label>
+                    <input type="range" id="firebreakWidth" min="0.05" max="1.0" value="0.1" step="0.05">
+                </div>
+
+                <div class="control-group">
+                    <label for="firebreakLength">Firebreak Length: <strong><span id="firebreakLengthValue">2.0</span> km</strong></label>
+                    <input type="range" id="firebreakLength" min="0.5" max="15" value="2.0" step="0.5">
+                </div>
+
+                <div class="control-group">
+                    <label for="waterdropRadius">Water Bomb Radius: <strong><span id="waterdropRadiusValue">0.3</span> km</strong></label>
+                    <input type="range" id="waterdropRadius" min="0.1" max="2.0" value="0.3" step="0.1">
+                </div>
+
+                <div id="suppressionStats" style="background: #e9ecef; padding: 10px; border-radius: 5px; margin: 10px 0; display: none;">
+                    <h4 style="margin: 0 0 5px 0; font-size: 13px;">🛡️ Suppression Actions</h4>
+                    <div style="font-size: 12px;">
+                        <div>Firebreaks: <strong id="firebreakCount">0</strong></div>
+                        <div>Water Drops: <strong id="waterdropCount">0</strong></div>
+                        <div><button class="btn btn-danger" id="clearSuppressionBtn" style="margin-top: 5px; width: 100%;">Clear All</button></div>
+                    </div>
+                </div>
+
+                <div class="control-buttons">
+                    <button class="btn btn-success" id="playBtn" disabled>▶ Play</button>
+                    <button class="btn btn-primary" id="pauseBtn" disabled>⏸ Pause</button>
+                    <button class="btn btn-danger" id="clearBtn" disabled>🗑 Clear</button>
+                </div>
+
+                <div style="margin: 10px 0;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Simulation Duration (days):</label>
+                    <input type="number" id="simulationDays" min="1" max="30" value="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                </div>
+
+                <div style="background: #e9ecef; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px;">🌬️ Wind Conditions</h4>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px;">Wind Speed (km/h):</label>
+                        <input type="range" id="windSpeed" min="0" max="100" value="0" style="width: 100%;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6c757d;">
+                            <span>0</span>
+                            <span id="windSpeedValue">0 km/h</span>
+                            <span>100</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px;">Wind Direction:</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <input type="range" id="windDirection" min="0" max="360" value="0" style="flex: 1;">
+                            <div id="windDirectionDisplay" style="width: 40px; height: 40px; border: 2px solid #667eea; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; background: white;">
+                                ➤
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6c757d; margin-top: 5px;">
+                            <span>N (0°)</span>
+                            <span id="windDirectionValue">0° North</span>
+                            <span>N (360°)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timeline-container" id="timelineContainer" style="display: none;">
+                    <div class="timeline-info">
+                        <span>Time: <strong id="currentTime">0</strong> hours</span>
+                        <span>Total: <strong id="totalTime">72</strong> hours</span>
+                    </div>
+                    <input type="range" class="timeline-slider" id="timelineSlider" min="0" max="72" value="0" step="1">
+                    <div style="margin-top: 10px; font-size: 12px;">
+                        <div>Burned Area: <strong id="burnedArea">0</strong> km²</div>
+                        <div>Avg ROS: <strong id="spreadRate">0</strong> m/min</div>
+                        <div>Wind: <strong id="simWindConditions">No wind</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="click-instruction">
+                📍 Select mode above, then click on map
+            </div>
+
+            <div class="info-section">
+                <h3>📊 Statistics</h3>
+                <div id="stats">
+                    <div class="loading">Loading data...</div>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h3>📍 Selected Location</h3>
+                <div id="location-info">
+                    <div class="data-row">
+                        <span class="data-label">Click on map to view data</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-section legend">
+                <h4>🎨 Color Legend</h4>
+                <div id="legend-items"></div>
+            </div>
+
+            <div class="info-section">
+                <h3>ℹ️ About</h3>
+                <p style="font-size: 13px; line-height: 1.6; color: #6c757d;">
+                    This visualization displays fire risk data for Cyprus including spread rate, 
+                    fuel dryness, and slope information. The simulation is calibrated to real-world 
+                    Cyprus fire behavior (≈130km² in 3 days) using the IgniteGuard ROS model with 
+                    Mediterranean parameters.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
+    
+    <script>
+        // Initialize the map centered on Cyprus
+        const map = L.map('map').setView([35.1264, 33.4299], 9);
+
+        // Add OpenStreetMap base layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(map);
+
+        let georasterLayer;
+        let georaster;
+        let stats = {
+            min: null,
+            max: null,
+            mean: null,
+            count: 0
+        };
+
+        // Fire simulation state
+        let fireSimulation = {
+            active: false,
+            ignitionPoint: null,
+            currentTime: 0,
+            maxTime: 72, // hours (will be set based on user input)
+            playing: false,
+            animationInterval: null,
+            fireMarker: null,
+            fireLayer: null,
+            burnedCells: new Set(),
+            fireFront: [],
+            mapMode: 'view', // 'view' or 'simulate'
+            // Scientific parameters based on IgniteGuard model
+            baseROS: 30, // meters per minute (theoretical max for Mediterranean)
+            averageROS: null, // calculated from data average
+            calibrationFactor: 0.15, // Calibration: reduces to match real-world (130km² in 3 days)
+            pixelSizeMeters: null, // calculated from georaster
+            timeStepHours: 1, // simulation time step
+            minSpreadThreshold: 0.01, // minimum spread factor to propagate fire
+            overlayVisible: true, // risk overlay visibility
+            cellROSValues: new Map(), // track ROS for each burning cell
+            // Wind parameters
+            windSpeed: 0, // km/h
+            windDirection: 0, // degrees (0 = North, 90 = East, 180 = South, 270 = West)
+            // Suppression actions
+            firebreaks: [], // array of firebreak line segments
+            waterdrops: [], // array of water drop zones
+            suppressionLayer: null, // layer for drawing suppression actions
+            suppressedCells: new Set(), // cells with active suppression
+            isDrawing: false,
+            drawStart: null,
+            firebreakWidth: 0.1, // km
+            firebreakLength: 2.0, // km
+            waterdropRadius: 0.3 // km
+        };
+
+        // Color scale function based on actual data values
+        function getColor(value) {
+            if (value === null || value === undefined || isNaN(value)) return 'rgba(128, 128, 128, 0.5)';
+            
+            // Handle zero or very low values (water/no fuel) - make transparent/blue
+            if (value <= 0) return 'rgba(100, 150, 255, 0.3)';
+            
+            // Normalize based on actual min/max from data
+            // Using absolute min/max for truthful representation
+            const minVal = stats.absMin > 0 ? stats.absMin : 0.001;
+            const maxVal = stats.absMax || 1;
+            const range = maxVal - minVal;
+            
+            // Linear normalization
+            const normalized = (value - minVal) / range;
+            const clampedNorm = Math.max(0, Math.min(1, normalized));
+
+            // Color gradient from green (low risk) to red (high risk)
+            // Use smooth gradient for better visual distribution
+            if (clampedNorm < 0.2) return `rgba(0, 255, 0, 0.7)`;        // Very Low: Green (0-20%)
+            if (clampedNorm < 0.4) return `rgba(154, 205, 50, 0.7)`;     // Low: Yellow-green (20-40%)
+            if (clampedNorm < 0.6) return `rgba(255, 255, 0, 0.7)`;      // Medium: Yellow (40-60%)
+            if (clampedNorm < 0.8) return `rgba(255, 165, 0, 0.7)`;      // High: Orange (60-80%)
+            return `rgba(255, 0, 0, 0.7)`;                                 // Very High: Red (80-100%)
+        }
+
+        // Load and display the GeoTIFF
+        async function loadGeoTIFF() {
+            try {
+                const response = await fetch('cyprus_spread_rate_fuel_dryness_slope.tif');
+                const arrayBuffer = await response.arrayBuffer();
+                
+                georaster = await parseGeoraster(arrayBuffer);
+                console.log('GeoRaster loaded:', georaster);
+
+                // Preprocessing: Fill isolated zeros with interpolated values
+                console.log('Preprocessing data: filling isolated zeros...');
+                for (let y = 0; y < georaster.height; y++) {
+                    for (let x = 0; x < georaster.width; x++) {
+                        const value = georaster.values[0][y][x];
+                        
+                        // Check if this is a zero or very low value
+                        if (value !== null && value !== georaster.noDataValue && !isNaN(value) && value <= 0) {
+                            // Count neighbors with high values
+                            let neighborSum = 0;
+                            let neighborCount = 0;
+                            let highValueNeighbors = 0;
+                            
+                            for (let dy = -1; dy <= 1; dy++) {
+                                for (let dx = -1; dx <= 1; dx++) {
+                                    if (dx === 0 && dy === 0) continue;
+                                    const nx = x + dx;
+                                    const ny = y + dy;
+                                    
+                                    if (nx >= 0 && nx < georaster.width && ny >= 0 && ny < georaster.height) {
+                                        const nVal = georaster.values[0][ny][nx];
+                                        if (nVal !== null && nVal !== georaster.noDataValue && !isNaN(nVal) && nVal > 0) {
+                                            neighborSum += nVal;
+                                            neighborCount++;
+                                            if (nVal > 1) highValueNeighbors++; // Count significant neighbors
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // If surrounded by high-value pixels, interpolate
+                            if (highValueNeighbors >= 5 && neighborCount >= 6) {
+                                georaster.values[0][y][x] = neighborSum / neighborCount;
+                            }
+                        }
+                    }
+                }
+
+                // Calculate statistics
+                const values = georaster.values[0].flat().filter(v => v !== null && !isNaN(v) && v !== georaster.noDataValue && v > 0);
+                
+                if (values.length > 0) {
+                    const sortedValues = values.slice().sort((a, b) => a - b);
+                    
+                    // Calculate percentiles for reference
+                    const p50Index = Math.floor(values.length * 0.50);
+                    
+                    stats.min = sortedValues[0];
+                    stats.max = sortedValues[sortedValues.length - 1];
+                    stats.mean = values.reduce((a, b) => a + b, 0) / values.length;
+                    stats.median = sortedValues[p50Index];
+                    stats.count = values.length;
+                    stats.absMin = stats.min;
+                    stats.absMax = stats.max;
+                    
+                    // Calculate value thresholds for color bands (based on actual data range)
+                    const range = stats.max - stats.min;
+                    stats.threshold20 = stats.min + range * 0.2;  // Green-YellowGreen boundary
+                    stats.threshold40 = stats.min + range * 0.4;  // YellowGreen-Yellow boundary
+                    stats.threshold60 = stats.min + range * 0.6;  // Yellow-Orange boundary
+                    stats.threshold80 = stats.min + range * 0.8;  // Orange-Red boundary
+                    
+                    // Calculate ROS for each threshold
+                    const calcROSForValue = (val) => {
+                        const sf = (val - stats.min) / (stats.max - stats.min);
+                        return (sf * fireSimulation.baseROS * fireSimulation.calibrationFactor).toFixed(2);
+                    };
+                    
+                    stats.ros20 = calcROSForValue(stats.threshold20);
+                    stats.ros40 = calcROSForValue(stats.threshold40);
+                    stats.ros60 = calcROSForValue(stats.threshold60);
+                    stats.ros80 = calcROSForValue(stats.threshold80);
+                    stats.rosMax = calcROSForValue(stats.max);
+                    
+                    // Calculate average ROS based on mean
+                    const meanSpreadFactor = (stats.mean - stats.min) / (stats.max - stats.min);
+                    fireSimulation.averageROS = meanSpreadFactor * fireSimulation.baseROS * fireSimulation.calibrationFactor;
+                    
+                    console.log('=== Data Statistics ===');
+                    console.log('Value Range:', stats.min.toFixed(4), '-', stats.max.toFixed(4));
+                    console.log('Mean:', stats.mean.toFixed(4), 'Median:', stats.median.toFixed(4));
+                    console.log('=== Color Thresholds & ROS ===');
+                    console.log('Green (0-20%):', stats.min.toFixed(4), '-', stats.threshold20.toFixed(4), '→ ROS: 0-', stats.ros20, 'm/min');
+                    console.log('YellowGreen (20-40%):', stats.threshold20.toFixed(4), '-', stats.threshold40.toFixed(4), '→ ROS:', stats.ros20, '-', stats.ros40, 'm/min');
+                    console.log('Yellow (40-60%):', stats.threshold40.toFixed(4), '-', stats.threshold60.toFixed(4), '→ ROS:', stats.ros40, '-', stats.ros60, 'm/min');
+                    console.log('Orange (60-80%):', stats.threshold60.toFixed(4), '-', stats.threshold80.toFixed(4), '→ ROS:', stats.ros60, '-', stats.ros80, 'm/min');
+                    console.log('Red (80-100%):', stats.threshold80.toFixed(4), '-', stats.max.toFixed(4), '→ ROS:', stats.ros80, '-', stats.rosMax, 'm/min');
+                    console.log('Average ROS:', fireSimulation.averageROS.toFixed(3), 'm/min');
+                } else {
+                    // No valid data
+                    stats.min = 0;
+                    stats.max = 1;
+                    stats.mean = 0;
+                    stats.count = 0;
+                    stats.absMin = 0;
+                    stats.absMax = 1;
+                }
+
+                // Update statistics display
+                document.getElementById('stats').innerHTML = `
+                    <div class="data-row">
+                        <span class="data-label">Display Range (5-95%):</span>
+                        <span class="data-value">${stats.min != null ? stats.min.toFixed(4) : 'N/A'} - ${stats.max != null ? stats.max.toFixed(4) : 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Absolute Range:</span>
+                        <span class="data-value">${stats.absMin != null ? stats.absMin.toFixed(4) : 'N/A'} - ${stats.absMax != null ? stats.absMax.toFixed(4) : 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Mean Value:</span>
+                        <span class="data-value">${stats.mean != null ? stats.mean.toFixed(4) : 'N/A'}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Data Points:</span>
+                        <span class="data-value">${stats.count.toLocaleString()}</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Resolution:</span>
+                        <span class="data-value">${georaster.width} × ${georaster.height}</span>
+                    </div>
+                `;
+
+                // Create the layer with custom rendering
+                georasterLayer = new GeoRasterLayer({
+                    georaster: georaster,
+                    opacity: 0.7,
+                    pixelValuesToColorFn: values => {
+                        const value = values[0];
+                        return getColor(value);
+                    },
+                    resolution: 256
+                });
+
+                georasterLayer.addTo(map);
+
+                // Create legend after stats are ready
+                createLegend();
+
+                // Fit map bounds to the raster
+                const bounds = [
+                    [georaster.ymin, georaster.xmin],
+                    [georaster.ymax, georaster.xmax]
+                ];
+                map.fitBounds(bounds);
+
+            } catch (error) {
+                console.error('Error loading GeoTIFF:', error);
+                document.getElementById('stats').innerHTML = `
+                    <div style="color: #dc3545; padding: 10px;">
+                        Error loading data: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function createLegend() {
+            const legendItems = document.getElementById('legend-items');
+            
+            // Check if stats are available
+            if (!stats.min || !stats.max || !stats.threshold20) {
+                legendItems.innerHTML = '<div style="color: #6c757d;">Loading legend...</div>';
+                return;
+            }
+            
+            // Use actual value ranges with ROS information
+            const ranges = [
+                { 
+                    label: 'Water/No Fuel', 
+                    color: 'rgba(100, 150, 255, 0.3)', 
+                    range: '≤ 0',
+                    ros: '0 m/min'
+                },
+                { 
+                    label: 'Very Low', 
+                    color: 'rgba(0, 255, 0, 0.7)', 
+                    range: `${stats.min.toFixed(3)} - ${stats.threshold20.toFixed(3)}`,
+                    ros: `0 - ${stats.ros20} m/min`
+                },
+                { 
+                    label: 'Low', 
+                    color: 'rgba(154, 205, 50, 0.7)', 
+                    range: `${stats.threshold20.toFixed(3)} - ${stats.threshold40.toFixed(3)}`,
+                    ros: `${stats.ros20} - ${stats.ros40} m/min`
+                },
+                { 
+                    label: 'Medium', 
+                    color: 'rgba(255, 255, 0, 0.7)', 
+                    range: `${stats.threshold40.toFixed(3)} - ${stats.threshold60.toFixed(3)}`,
+                    ros: `${stats.ros40} - ${stats.ros60} m/min`
+                },
+                { 
+                    label: 'High', 
+                    color: 'rgba(255, 165, 0, 0.7)', 
+                    range: `${stats.threshold60.toFixed(3)} - ${stats.threshold80.toFixed(3)}`,
+                    ros: `${stats.ros60} - ${stats.ros80} m/min`
+                },
+                { 
+                    label: 'Very High', 
+                    color: 'rgba(255, 0, 0, 0.7)', 
+                    range: `${stats.threshold80.toFixed(3)} - ${stats.max.toFixed(3)}`,
+                    ros: `${stats.ros80} - ${stats.rosMax} m/min`
+                }
+            ];
+
+            legendItems.innerHTML = ranges.map(item => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background: ${item.color};"></div>
+                    <div>
+                        <strong>${item.label}</strong><br>
+                        <small style="color: #6c757d; line-height: 1.4;">
+                            Value: ${item.range}<br>
+                            ROS: ${item.ros}
+                        </small>
+                    </div>
+                </div>
+            `).join('') + '<div style="margin-top: 10px; font-size: 11px; color: #6c757d;">*Linear scale based on actual data values (0-' + stats.max.toFixed(2) + ')</div>';
+        }
+
+        // Helper function to constrain line to specified length in km
+        function constrainLineLength(startLatLng, endLatLng, maxLengthKm) {
+            const R = 6371; // Earth's radius in km
+            
+            // Calculate distance using Haversine formula
+            const lat1 = startLatLng.lat * Math.PI / 180;
+            const lat2 = endLatLng.lat * Math.PI / 180;
+            const dLat = (endLatLng.lat - startLatLng.lat) * Math.PI / 180;
+            const dLng = (endLatLng.lng - startLatLng.lng) * Math.PI / 180;
+            
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1) * Math.cos(lat2) *
+                    Math.sin(dLng/2) * Math.sin(dLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c; // in km
+            
+            // If current line is within limit, return as is
+            if (distance <= maxLengthKm) {
+                return endLatLng;
+            }
+            
+            // Otherwise, scale to max length
+            const ratio = maxLengthKm / distance;
+            const newLat = startLatLng.lat + (endLatLng.lat - startLatLng.lat) * ratio;
+            const newLng = startLatLng.lng + (endLatLng.lng - startLatLng.lng) * ratio;
+            
+            return L.latLng(newLat, newLng);
+        }
+
+        // Suppression action functions
+        function initSuppressionLayer() {
+            if (!fireSimulation.suppressionLayer) {
+                fireSimulation.suppressionLayer = L.layerGroup().addTo(map);
+            }
+        }
+
+        function drawFirebreak(startLatLng, endLatLng) {
+            initSuppressionLayer();
+            
+            const widthKm = fireSimulation.firebreakWidth;
+            const lengthKm = fireSimulation.firebreakLength;
+            const widthMeters = widthKm * 1000;
+            
+            // Constrain end point to specified length
+            const constrainedEnd = constrainLineLength(startLatLng, endLatLng, lengthKm);
+            
+            // Calculate perpendicular offset for rectangle
+            const dx = constrainedEnd.lng - startLatLng.lng;
+            const dy = constrainedEnd.lat - startLatLng.lat;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            
+            // Perpendicular vector (normalized and scaled to half width in degrees)
+            const widthDegrees = widthKm / 111; // approximate km to degrees
+            const perpX = length > 0 ? -(dy / length) * widthDegrees / 2 : 0;
+            const perpY = length > 0 ? (dx / length) * widthDegrees / 2 : 0;
+            
+            // Create rectangle corners
+            const corner1 = L.latLng(startLatLng.lat + perpY, startLatLng.lng + perpX);
+            const corner2 = L.latLng(startLatLng.lat - perpY, startLatLng.lng - perpX);
+            const corner3 = L.latLng(constrainedEnd.lat - perpY, constrainedEnd.lng - perpX);
+            const corner4 = L.latLng(constrainedEnd.lat + perpY, constrainedEnd.lng + perpX);
+            
+            // Draw rectangle on map
+            const rectangle = L.polygon([corner1, corner2, corner3, corner4], {
+                color: '#8B4513',
+                fillColor: '#D2691E',
+                fillOpacity: 0.6,
+                weight: 2,
+                className: 'firebreak-rectangle'
+            }).addTo(fireSimulation.suppressionLayer);
+
+            // Calculate affected cells along the line with width
+            const affectedCells = getLinePixels(startLatLng, constrainedEnd, widthMeters);
+            
+            // Mark cells as suppressed (acts as barrier like water)
+            affectedCells.forEach(cell => {
+                const key = `${cell.x},${cell.y}`;
+                fireSimulation.suppressedCells.add(key);
+            });
+
+            fireSimulation.firebreaks.push({
+                start: startLatLng,
+                end: constrainedEnd,
+                rectangle: rectangle,
+                cells: affectedCells,
+                width: widthKm,
+                length: lengthKm
+            });
+
+            updateSuppressionStats();
+        }
+
+        function addWaterDrop(latLng) {
+            initSuppressionLayer();
+            
+            const radiusKm = fireSimulation.waterdropRadius;
+            const radiusMeters = radiusKm * 1000;
+            
+            // Draw circle on map
+            const circle = L.circle(latLng, {
+                radius: radiusMeters,
+                color: '#0088ff',
+                fillColor: '#00ccff',
+                fillOpacity: 0.4,
+                weight: 2
+            }).addTo(fireSimulation.suppressionLayer);
+
+            // Calculate affected cells in radius
+            const affectedCells = getCirclePixels(latLng, radiusKm);
+            
+            // Mark cells as suppressed (water bombs create suppression zones)
+            affectedCells.forEach(cell => {
+                const key = `${cell.x},${cell.y}`;
+                fireSimulation.suppressedCells.add(key);
+            });
+
+            fireSimulation.waterdrops.push({
+                center: latLng,
+                radius: radiusKm,
+                circle: circle,
+                cells: affectedCells,
+                timestamp: Date.now()
+            });
+
+            updateSuppressionStats();
+        }
+
+        function getLinePixels(startLatLng, endLatLng, widthMeters) {
+            if (!georaster) return [];
+            
+            const x1 = Math.floor((startLatLng.lng - georaster.xmin) / georaster.pixelWidth);
+            const y1 = Math.floor((georaster.ymax - startLatLng.lat) / georaster.pixelHeight);
+            const x2 = Math.floor((endLatLng.lng - georaster.xmin) / georaster.pixelWidth);
+            const y2 = Math.floor((georaster.ymax - endLatLng.lat) / georaster.pixelHeight);
+
+            // Convert width from meters to pixels
+            const metersPerPixel = georaster.pixelWidth * 111000; // approximate
+            const widthPixels = Math.ceil(widthMeters / metersPerPixel);
+
+            const pixels = [];
+            const pixelSet = new Set(); // prevent duplicates
+            
+            // Bresenham's line algorithm with perpendicular width
+            const dx = Math.abs(x2 - x1);
+            const dy = Math.abs(y2 - y1);
+            const sx = x1 < x2 ? 1 : -1;
+            const sy = y1 < y2 ? 1 : -1;
+            let err = dx - dy;
+
+            let x = x1, y = y1;
+
+            // Calculate perpendicular direction for width
+            const length = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+            const perpX = length > 0 ? -(y2 - y1) / length : 0;
+            const perpY = length > 0 ? (x2 - x1) / length : 0;
+
+            while (true) {
+                // Add pixels perpendicular to line for width
+                for (let w = -widthPixels; w <= widthPixels; w++) {
+                    const px = Math.round(x + perpX * w);
+                    const py = Math.round(y + perpY * w);
+                    if (px >= 0 && px < georaster.width && py >= 0 && py < georaster.height) {
+                        const key = `${px},${py}`;
+                        if (!pixelSet.has(key)) {
+                            pixelSet.add(key);
+                            pixels.push({ x: px, y: py });
+                        }
+                    }
+                }
+
+                if (x === x2 && y === y2) break;
+                const e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; x += sx; }
+                if (e2 < dx) { err += dx; y += sy; }
+            }
+
+            return pixels;
+        }
+
+        function getCirclePixels(centerLatLng, radiusKm) {
+            if (!georaster) return [];
+            
+            const centerX = Math.floor((centerLatLng.lng - georaster.xmin) / georaster.pixelWidth);
+            const centerY = Math.floor((georaster.ymax - centerLatLng.lat) / georaster.pixelHeight);
+            
+            // Convert radius from km to pixels
+            const metersPerPixel = georaster.pixelWidth * 111000; // approximate
+            const radiusPixels = Math.ceil((radiusKm * 1000) / metersPerPixel);
+
+            const pixels = [];
+            for (let dx = -radiusPixels; dx <= radiusPixels; dx++) {
+                for (let dy = -radiusPixels; dy <= radiusPixels; dy++) {
+                    if (dx * dx + dy * dy <= radiusPixels * radiusPixels) {
+                        const px = centerX + dx;
+                        const py = centerY + dy;
+                        if (px >= 0 && px < georaster.width && py >= 0 && py < georaster.height) {
+                            pixels.push({ x: px, y: py });
+                        }
+                    }
+                }
+            }
+
+            return pixels;
+        }
+
+        function updateSuppressionStats() {
+            const firebreakKm = fireSimulation.firebreaks.reduce((sum, fb) => sum + fb.length, 0).toFixed(2);
+            const waterdropArea = fireSimulation.waterdrops.reduce((sum, wd) => sum + Math.PI * wd.radius * wd.radius, 0).toFixed(2);
+            
+            document.getElementById('firebreakCount').textContent = `${fireSimulation.firebreaks.length} (${firebreakKm} km)`;
+            document.getElementById('waterdropCount').textContent = `${fireSimulation.waterdrops.length} (${waterdropArea} km²)`;
+            document.getElementById('suppressionStats').style.display = 
+                (fireSimulation.firebreaks.length > 0 || fireSimulation.waterdrops.length > 0) ? 'block' : 'none';
+        }
+
+        function clearSuppressionActions() {
+            if (fireSimulation.suppressionLayer) {
+                fireSimulation.suppressionLayer.clearLayers();
+            }
+            fireSimulation.firebreaks = [];
+            fireSimulation.waterdrops = [];
+            fireSimulation.suppressedCells.clear();
+            updateSuppressionStats();
+        }
+
+        // Overlay control functions
+        function toggleOverlay(visible) {
+            if (georasterLayer) {
+                if (visible) {
+                    georasterLayer.setOpacity(0.7);
+                } else {
+                    georasterLayer.setOpacity(0);
+                }
+            }
+            fireSimulation.overlayVisible = visible;
+        }
+
+        // Fire simulation functions
+        function initializeFire(lat, lng) {
+            clearFireSimulation();
+            
+            const x = Math.floor((lng - georaster.xmin) / georaster.pixelWidth);
+            const y = Math.floor((georaster.ymax - lat) / georaster.pixelHeight);
+
+            if (x < 0 || x >= georaster.width || y < 0 || y >= georaster.height) {
+                alert('Please click within the data bounds');
+                return;
+            }
+
+            // Check if location has valid data (not water/zero value)
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                alert('Cannot start fire on water or areas with no fuel. Please select a location with vegetation.');
+                return;
+            }
+
+            // Calculate pixel size in meters (approximate)
+            // At Cyprus latitude (~35°), 1 degree ≈ 111 km
+            const latMetersPerDegree = 111000;
+            const lngMetersPerDegree = 111000 * Math.cos(lat * Math.PI / 180);
+            fireSimulation.pixelSizeMeters = Math.sqrt(
+                (georaster.pixelWidth * lngMetersPerDegree) ** 2 +
+                (georaster.pixelHeight * latMetersPerDegree) ** 2
+            );
+
+            fireSimulation.active = true;
+            fireSimulation.ignitionPoint = { lat, lng, x, y };
+            fireSimulation.currentTime = 0;
+            fireSimulation.burnedCells.clear();
+            fireSimulation.fireFront = [{ x, y, time: 0 }];
+
+            // Hide risk overlay during fire simulation
+            toggleOverlay(false);
+            document.getElementById('overlayCheckbox').checked = false;
+
+            // Create fire layer
+            if (fireSimulation.fireLayer) {
+                map.removeLayer(fireSimulation.fireLayer);
+            }
+            fireSimulation.fireLayer = L.layerGroup().addTo(map);
+
+            // Add ignition marker
+            const fireIcon = L.divIcon({
+                className: 'fire-marker',
+                html: '<div style="background: red; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px red;"></div>',
+                iconSize: [20, 20]
+            });
+            fireSimulation.fireMarker = L.marker([lat, lng], { icon: fireIcon }).addTo(fireSimulation.fireLayer);
+
+            // Set simulation duration from user input
+            const simulationDays = parseInt(document.getElementById('simulationDays').value) || 3;
+            fireSimulation.maxTime = simulationDays * 24; // convert days to hours
+            
+            // Capture wind parameters
+            fireSimulation.windSpeed = parseFloat(document.getElementById('windSpeed').value) || 0;
+            fireSimulation.windDirection = parseFloat(document.getElementById('windDirection').value) || 0;
+            
+            // Enable controls
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('clearBtn').disabled = false;
+            document.getElementById('timelineContainer').style.display = 'block';
+            document.getElementById('timelineSlider').max = fireSimulation.maxTime;
+            document.getElementById('timelineSlider').value = 0;
+            document.getElementById('currentTime').textContent = '0';
+            document.getElementById('totalTime').textContent = fireSimulation.maxTime;
+
+            updateFireVisualization(0);
+        }
+
+        function calculateWindInfluence(fromX, fromY, toX, toY) {
+            // Calculate wind effect on fire spread
+            if (fireSimulation.windSpeed === 0) {
+                return 1.0; // No wind = no effect
+            }
+
+            // Calculate spread direction (in degrees)
+            const dx = toX - fromX;
+            const dy = fromY - toY; // Y decreases northward in array coordinates
+            
+            // Convert to compass bearing (0° = North, 90° = East, 180° = South, 270° = West)
+            // atan2(x, y) gives angle from north clockwise
+            let spreadDirection = Math.atan2(dx, dy) * (180 / Math.PI);
+            if (spreadDirection < 0) spreadDirection += 360;
+
+            // Calculate angle difference between wind and spread direction
+            let angleDiff = Math.abs(spreadDirection - fireSimulation.windDirection);
+            if (angleDiff > 180) angleDiff = 360 - angleDiff;
+
+            // Wind influence factor based on angle
+            // 0° (with wind) = maximum boost
+            // 90° (perpendicular) = neutral  
+            // 180° (against wind) = maximum reduction
+            const angleInfluence = Math.cos(angleDiff * Math.PI / 180);
+
+            // Wind speed influence (more aggressive scaling)
+            // Even moderate winds should have significant effect
+            const windSpeedFactor = Math.min(fireSimulation.windSpeed / 30, 2.0); // 30 km/h = 1.0, caps at 2.0
+
+            // Calculate final wind multiplier
+            // With wind: multiplier increases significantly (up to 5x at extreme wind)
+            // Against wind: multiplier decreases significantly (down to 0.2x)
+            // Perpendicular: close to normal (0.9-1.1x)
+            
+            if (angleInfluence > 0.7) {
+                // Strongly with wind (within ±45°)
+                const multiplier = 1.0 + (angleInfluence * windSpeedFactor * 3.0);
+                return Math.min(5.0, multiplier);
+            } else if (angleInfluence < -0.7) {
+                // Strongly against wind
+                const multiplier = 1.0 + (angleInfluence * windSpeedFactor * 0.8);
+                return Math.max(0.2, multiplier);
+            } else {
+                // Perpendicular or moderate angle
+                const multiplier = 1.0 + (angleInfluence * windSpeedFactor * 1.5);
+                return Math.max(0.5, Math.min(3.0, multiplier));
+            }
+        }
+
+        function calculateROS(spreadFactor, windMultiplier = 1.0) {
+            // IgniteGuard ROS Model normalized by data average
+            // This ensures ROS varies appropriately around the average
+            const cappedSF = Math.min(spreadFactor, 1.0);
+            
+            // Calculate base ROS using calibrated formula
+            let baseROS = cappedSF * fireSimulation.baseROS * fireSimulation.calibrationFactor;
+            
+            // If average ROS is available, normalize relative to it
+            if (fireSimulation.averageROS && fireSimulation.averageROS > 0) {
+                // Scale ROS so that average spread factor gives average ROS
+                // Higher than average gets proportionally more, lower gets less
+                const avgSpreadFactor = 0.5; // middle of normalized range
+                const avgBaseROS = avgSpreadFactor * fireSimulation.baseROS * fireSimulation.calibrationFactor;
+                const scaleFactor = fireSimulation.averageROS / avgBaseROS;
+                baseROS = baseROS * scaleFactor;
+            }
+            
+            // Apply wind multiplier
+            const finalROS = baseROS * windMultiplier;
+            
+            return finalROS; // meters per minute
+        }
+
+        function calculateSpreadDistance(ros, timeHours) {
+            // Convert ROS (m/min) to distance traveled in given time
+            const timeMinutes = timeHours * 60;
+            return ros * timeMinutes; // meters
+        }
+
+        function canCellBurn(x, y) {
+            // Check if cell is within bounds
+            if (x < 0 || x >= georaster.width || y < 0 || y >= georaster.height) {
+                return false;
+            }
+            
+            // Check if already burned
+            if (fireSimulation.burnedCells.has(`${x},${y}`)) {
+                return false;
+            }
+
+            // Check if cell is suppressed by firebreak or water drop
+            if (fireSimulation.suppressedCells.has(`${x},${y}`)) {
+                return false;
+            }
+            
+            // Check if cell has valid fuel (not water/zero)
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value)) {
+                return false;
+            }
+            
+            // Allow very small values (potential false positives) but block true zeros
+            // This helps fire spread through isolated noise but stops at water bodies
+            if (value <= 0 || (stats.min && value < stats.min * 0.1)) {
+                // Check if this is an isolated zero by looking at neighbors
+                let neighborsWithFuel = 0;
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx >= 0 && nx < georaster.width && ny >= 0 && ny < georaster.height) {
+                            const nVal = georaster.values[0][ny]?.[nx];
+                            if (nVal && nVal > 0) neighborsWithFuel++;
+                        }
+                    }
+                }
+                // Allow if surrounded by fuel (isolated false positive)
+                return neighborsWithFuel >= 5;
+            }
+            
+            return true;
+        }
+
+        function getCellSpreadFactor(x, y) {
+            const value = georaster.values[0][y]?.[x];
+            if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                return 0;
+            }
+            
+            const spreadFactor = stats.min !== stats.max 
+                ? (value - stats.min) / (stats.max - stats.min)
+                : 0.5;
+            
+            return Math.max(0, spreadFactor);
+        }
+
+        function hasPathToCell(fromX, fromY, toX, toY) {
+            // Check if there's a valid path (no water barriers or suppression) between cells
+            // Use Bresenham's line algorithm to check cells along the path
+            // Allow small patches of zeros (false positives) but block large water bodies
+            const dx = Math.abs(toX - fromX);
+            const dy = Math.abs(toY - fromY);
+            const sx = fromX < toX ? 1 : -1;
+            const sy = fromY < toY ? 1 : -1;
+            let err = dx - dy;
+            
+            let x = fromX;
+            let y = fromY;
+            let consecutiveZeros = 0;
+            const maxConsecutiveZeros = 2; // Allow up to 2 consecutive zero cells (false positives)
+            
+            while (true) {
+                // Check if current cell is suppressed by firebreak or water bomb
+                const cellKey = `${x},${y}`;
+                if (fireSimulation.suppressedCells.has(cellKey)) {
+                    return false; // Suppression barrier blocks the path
+                }
+                
+                // Check if current cell in path has fuel
+                const value = georaster.values[0][y]?.[x];
+                if (value === null || value === georaster.noDataValue || isNaN(value) || value <= 0) {
+                    consecutiveZeros++;
+                    // Only block if we encounter significant water barrier
+                    if (consecutiveZeros > maxConsecutiveZeros) {
+                        return false; // Large water body blocks the path
+                    }
+                } else {
+                    consecutiveZeros = 0; // Reset counter when fuel found
+                }
+                
+                if (x === toX && y === toY) break;
+                
+                const e2 = 2 * err;
+                if (e2 > -dy) {
+                    err -= dy;
+                    x += sx;
+                }
+                if (e2 < dx) {
+                    err += dx;
+                    y += sy;
+                }
+            }
+            
+            return true;
+        }
+
+        function simulateFireStep() {
+            if (!fireSimulation.active || fireSimulation.fireFront.length === 0) {
+                stopFireAnimation();
+                return;
+            }
+
+            fireSimulation.currentTime += fireSimulation.timeStepHours;
+            const newFrontSet = new Map(); // Use Map to avoid duplicates and store best ROS
+
+            // Process each cell in the fire front
+            for (const cell of fireSimulation.fireFront) {
+                const { x, y } = cell;
+                const cellKey = `${x},${y}`;
+                
+                // Mark current cell as burned
+                if (!fireSimulation.burnedCells.has(cellKey)) {
+                    const value = georaster.values[0][y]?.[x];
+                    // Only burn if it has fuel
+                    if (value && value !== georaster.noDataValue && !isNaN(value) && value > 0) {
+                        fireSimulation.burnedCells.add(cellKey);
+                    } else {
+                        continue; // Skip if no fuel
+                    }
+                }
+
+                const spreadFactor = getCellSpreadFactor(x, y);
+                
+                // Skip if spread factor is too low (no fuel)
+                if (spreadFactor < fireSimulation.minSpreadThreshold) continue;
+
+                // Calculate Rate of Spread (ROS) in meters per minute
+                const ros = calculateROS(spreadFactor);
+                
+                // Calculate how far fire can spread in this time step
+                const spreadDistanceMeters = calculateSpreadDistance(ros, fireSimulation.timeStepHours);
+                
+                // Convert to number of cells
+                const spreadRadiusCells = Math.ceil(spreadDistanceMeters / fireSimulation.pixelSizeMeters);
+                const maxSearchRadius = Math.min(spreadRadiusCells, 8); // Cap at 8 cells for performance
+
+                // Check all cells within spread radius (circular spread)
+                for (let dx = -maxSearchRadius; dx <= maxSearchRadius; dx++) {
+                    for (let dy = -maxSearchRadius; dy <= maxSearchRadius; dy++) {
+                        if (dx === 0 && dy === 0) continue;
+                        
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        const nKey = `${nx},${ny}`;
+
+                        if (!canCellBurn(nx, ny)) continue;
+
+                        // Calculate distance (circular spread - includes diagonals naturally)
+                        const cellDistance = Math.sqrt(dx * dx + dy * dy);
+                        const distanceMeters = cellDistance * fireSimulation.pixelSizeMeters;
+
+                        // Check if within spread radius
+                        if (distanceMeters <= spreadDistanceMeters) {
+                            const neighborSF = getCellSpreadFactor(nx, ny);
+                            
+                            if (neighborSF >= fireSimulation.minSpreadThreshold) {
+                                // For immediate neighbors (distance <= sqrt(2)), allow with some probability
+                                const isImmediateNeighbor = cellDistance <= 1.5;
+                                
+                                if (isImmediateNeighbor) {
+                                    // Direct neighbors - high probability but not 100%
+                                    // Apply wind influence
+                                    const windInfluence = calculateWindInfluence(x, y, nx, ny);
+                                    const neighborROS = calculateROS(neighborSF, windInfluence);
+                                    
+                                    // Adjust spread probability based on wind
+                                    // With wind: higher chance, against wind: lower chance
+                                    const windProbabilityFactor = 0.5 + (windInfluence - 1.0) * 0.3;
+                                    const baseSpreadChance = (0.6 + neighborSF * 0.4) * windProbabilityFactor;
+                                    const finalSpreadChance = Math.max(0.2, Math.min(1.0, baseSpreadChance));
+                                    
+                                    if (Math.random() < finalSpreadChance) {
+                                        if (!newFrontSet.has(nKey) || newFrontSet.get(nKey).ros < neighborROS) {
+                                            newFrontSet.set(nKey, { 
+                                                x: nx, 
+                                                y: ny, 
+                                                time: fireSimulation.currentTime,
+                                                ros: neighborROS
+                                            });
+                                            // Track ROS for this cell
+                                            fireSimulation.cellROSValues.set(nKey, neighborROS);
+                                        }
+                                    }
+                                } else {
+                                    // Longer range - check path and add stronger randomness
+                                    if (hasPathToCell(x, y, nx, ny)) {
+                                        // Apply wind influence
+                                        const windInfluence = calculateWindInfluence(x, y, nx, ny);
+                                        const neighborROS = calculateROS(neighborSF, windInfluence);
+                                        
+                                        // Probability decreases with distance and fuel level, modified by wind
+                                        const distanceFactor = 1 - (distanceMeters / spreadDistanceMeters);
+                                        const windProbabilityFactor = 0.5 + (windInfluence - 1.0) * 0.3;
+                                        const spreadChance = (0.3 + distanceFactor * 0.4) * (0.5 + neighborSF * 0.5) * windProbabilityFactor;
+                                        const finalSpreadChance = Math.max(0.1, Math.min(1.0, spreadChance));
+                                        
+                                        if (Math.random() < finalSpreadChance) {
+                                            if (!newFrontSet.has(nKey) || newFrontSet.get(nKey).ros < neighborROS) {
+                                                newFrontSet.set(nKey, { 
+                                                    x: nx, 
+                                                    y: ny, 
+                                                    time: fireSimulation.currentTime,
+                                                    ros: neighborROS
+                                                });
+                                                // Track ROS for this cell
+                                                fireSimulation.cellROSValues.set(nKey, neighborROS);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Convert Map to Array for next iteration
+            fireSimulation.fireFront = Array.from(newFrontSet.values());
+            updateFireVisualization(fireSimulation.currentTime);
+
+            if (fireSimulation.currentTime >= fireSimulation.maxTime || fireSimulation.fireFront.length === 0) {
+                stopFireAnimation();
+            }
+        }
+
+        function updateFireVisualization(time) {
+            if (!fireSimulation.fireLayer) return;
+
+            // Clear previous fire visualization (except marker)
+            fireSimulation.fireLayer.eachLayer(layer => {
+                if (layer !== fireSimulation.fireMarker) {
+                    fireSimulation.fireLayer.removeLayer(layer);
+                }
+            });
+
+            // Draw burned area
+            const burnedPolygons = [];
+            fireSimulation.burnedCells.forEach(cellKey => {
+                const [x, y] = cellKey.split(',').map(Number);
+                
+                const lng1 = georaster.xmin + x * georaster.pixelWidth;
+                const lng2 = lng1 + georaster.pixelWidth;
+                const lat1 = georaster.ymax - y * georaster.pixelHeight;
+                const lat2 = lat1 - georaster.pixelHeight;
+
+                const bounds = [[lat2, lng1], [lat1, lng2]];
+                
+                const intensity = 0.3 + Math.random() * 0.4;
+                L.rectangle(bounds, {
+                    color: '#ff4500',
+                    weight: 0,
+                    fillColor: '#ff4500',
+                    fillOpacity: intensity
+                }).addTo(fireSimulation.fireLayer);
+            });
+
+            // Update statistics
+            // Calculate burned area in km²
+            const pixelAreaDegrees = georaster.pixelWidth * georaster.pixelHeight;
+            // Convert from degrees² to km² (at Cyprus latitude ~35°)
+            const degToKm = 111; // km per degree latitude
+            const approxAreaKm2 = (fireSimulation.burnedCells.size * pixelAreaDegrees * degToKm * degToKm).toFixed(2);
+            
+            // Calculate actual average ROS from tracked cells
+            let actualAvgROS = 0;
+            if (fireSimulation.cellROSValues.size > 0) {
+                const rosValues = Array.from(fireSimulation.cellROSValues.values());
+                actualAvgROS = (rosValues.reduce((a, b) => a + b, 0) / rosValues.length).toFixed(3);
+            }
+            const avgSpreadRate = actualAvgROS;
+
+            document.getElementById('currentTime').textContent = time;
+            document.getElementById('timelineSlider').value = time;
+            document.getElementById('burnedArea').textContent = approxAreaKm2;
+            document.getElementById('spreadRate').textContent = avgSpreadRate;
+            
+            // Display wind conditions
+            const windConditions = fireSimulation.windSpeed > 0 
+                ? `${fireSimulation.windSpeed} km/h @ ${Math.round(fireSimulation.windDirection)}°`
+                : 'No wind';
+            document.getElementById('simWindConditions').textContent = windConditions;
+        }
+
+        function playFireAnimation() {
+            if (fireSimulation.playing) return;
+            
+            fireSimulation.playing = true;
+            document.getElementById('playBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = false;
+
+            fireSimulation.animationInterval = setInterval(() => {
+                simulateFireStep();
+            }, 500); // 500ms per hour
+        }
+
+        function stopFireAnimation() {
+            fireSimulation.playing = false;
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            
+            if (fireSimulation.animationInterval) {
+                clearInterval(fireSimulation.animationInterval);
+                fireSimulation.animationInterval = null;
+            }
+        }
+
+        function clearFireSimulation() {
+            stopFireAnimation();
+            
+            if (fireSimulation.fireLayer) {
+                map.removeLayer(fireSimulation.fireLayer);
+                fireSimulation.fireLayer = null;
+            }
+
+            fireSimulation.active = false;
+            fireSimulation.ignitionPoint = null;
+            fireSimulation.currentTime = 0;
+            fireSimulation.burnedCells.clear();
+            fireSimulation.fireFront = [];
+            fireSimulation.fireMarker = null;
+            fireSimulation.cellROSValues.clear();
+
+            // Note: Keep suppression actions - they persist across simulations
+            // Users can clear them separately with the "Clear All" button
+
+            // Restore risk overlay
+            toggleOverlay(true);
+            document.getElementById('overlayCheckbox').checked = true;
+
+            document.getElementById('playBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = true;
+            document.getElementById('clearBtn').disabled = true;
+            document.getElementById('timelineContainer').style.display = 'none';
+        }
+
+        // Event listeners for controls
+        document.getElementById('playBtn').addEventListener('click', playFireAnimation);
+        document.getElementById('pauseBtn').addEventListener('click', stopFireAnimation);
+        document.getElementById('clearBtn').addEventListener('click', clearFireSimulation);
+
+        document.getElementById('timelineSlider').addEventListener('input', (e) => {
+            const targetTime = parseInt(e.target.value);
+            
+            if (targetTime < fireSimulation.currentTime) {
+                // Reset and replay to target time
+                const ignition = fireSimulation.ignitionPoint;
+                if (ignition) {
+                    initializeFire(ignition.lat, ignition.lng);
+                    for (let i = 0; i < targetTime; i++) {
+                        simulateFireStep();
+                    }
+                }
+            } else {
+                // Advance to target time
+                while (fireSimulation.currentTime < targetTime && fireSimulation.fireFront.length > 0) {
+                    simulateFireStep();
+                }
+            }
+        });
+
+        // Wind control event listeners
+        document.getElementById('windSpeed').addEventListener('input', (e) => {
+            const speed = e.target.value;
+            document.getElementById('windSpeedValue').textContent = `${speed} km/h`;
+            if (fireSimulation.active) {
+                fireSimulation.windSpeed = parseFloat(speed);
+            }
+        });
+
+        document.getElementById('windDirection').addEventListener('input', (e) => {
+            const direction = parseFloat(e.target.value);
+            const directionNames = {
+                0: 'North', 45: 'NE', 90: 'East', 135: 'SE',
+                180: 'South', 225: 'SW', 270: 'West', 315: 'NW', 360: 'North'
+            };
+            
+            // Find closest named direction
+            let closestName = 'North';
+            let minDiff = 360;
+            for (const [angle, name] of Object.entries(directionNames)) {
+                const diff = Math.abs(direction - angle);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestName = name;
+                }
+            }
+            
+            document.getElementById('windDirectionValue').textContent = `${Math.round(direction)}° ${closestName}`;
+            
+            // Rotate arrow indicator
+            const arrow = document.getElementById('windDirectionDisplay');
+            arrow.style.transform = `rotate(${direction}deg)`;
+            
+            if (fireSimulation.active) {
+                fireSimulation.windDirection = direction;
+            }
+        });
+
+        // Overlay toggle
+        document.getElementById('overlayCheckbox').addEventListener('change', (e) => {
+            // Don't allow turning on overlay during active fire simulation
+            if (fireSimulation.active && e.target.checked) {
+                e.target.checked = false;
+                alert('Cannot show risk overlay during fire simulation. Clear the fire first.');
+                return;
+            }
+            toggleOverlay(e.target.checked);
+        });
+
+        // Firebreak width slider
+        document.getElementById('firebreakWidth').addEventListener('input', function(e) {
+            fireSimulation.firebreakWidth = parseFloat(e.target.value);
+            document.getElementById('firebreakWidthValue').textContent = e.target.value;
+        });
+
+        // Firebreak length slider
+        document.getElementById('firebreakLength').addEventListener('input', function(e) {
+            fireSimulation.firebreakLength = parseFloat(e.target.value);
+            document.getElementById('firebreakLengthValue').textContent = e.target.value;
+        });
+
+        // Water drop radius slider
+        document.getElementById('waterdropRadius').addEventListener('input', function(e) {
+            fireSimulation.waterdropRadius = parseFloat(e.target.value);
+            document.getElementById('waterdropRadiusValue').textContent = e.target.value;
+        });
+
+        // Clear suppression button
+        document.getElementById('clearSuppressionBtn').addEventListener('click', clearSuppressionActions);
+
+        // Mode selector
+        document.querySelectorAll('input[name="mapMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                fireSimulation.mapMode = e.target.value;
+                if (e.target.value === 'simulate') {
+                    map.getContainer().style.cursor = 'crosshair';
+                } else if (e.target.value === 'firebreak') {
+                    map.getContainer().style.cursor = 'crosshair';
+                } else if (e.target.value === 'waterdrop') {
+                    map.getContainer().style.cursor = 'pointer';
+                } else {
+                    map.getContainer().style.cursor = '';
+                }
+            });
+        });
+
+        // Map drawing handlers for firebreaks
+        map.on('mousedown', function(e) {
+            if (fireSimulation.mapMode === 'firebreak') {
+                fireSimulation.isDrawing = true;
+                fireSimulation.drawStart = e.latlng;
+            }
+        });
+
+        map.on('mouseup', function(e) {
+            if (fireSimulation.mapMode === 'firebreak' && fireSimulation.isDrawing) {
+                fireSimulation.isDrawing = false;
+                if (fireSimulation.drawStart) {
+                    drawFirebreak(fireSimulation.drawStart, e.latlng);
+                    fireSimulation.drawStart = null;
+                }
+            }
+        });
+
+        // Handle map clicks
+        map.on('click', function(e) {
+            if (!georaster) return;
+
+            const { lat, lng } = e.latlng;
+
+            if (fireSimulation.mapMode === 'simulate') {
+                initializeFire(lat, lng);
+                return;
+            }
+
+            if (fireSimulation.mapMode === 'waterdrop') {
+                addWaterDrop(e.latlng);
+                return;
+            }
+
+            // View mode - show pixel values
+            const x = Math.floor((lng - georaster.xmin) / georaster.pixelWidth);
+            const y = Math.floor((georaster.ymax - lat) / georaster.pixelHeight);
+
+            if (x >= 0 && x < georaster.width && y >= 0 && y < georaster.height) {
+                const value = georaster.values[0][y][x];
+                
+                if (value !== null && value !== georaster.noDataValue && !isNaN(value)) {
+                    // Calculate spread factor (0-1 range)
+                    const spreadFactor = stats.min !== stats.max 
+                        ? (value - stats.min) / (stats.max - stats.min)
+                        : 0.5;
+                    
+                    // Calculate ROS in m/min using IgniteGuard formula
+                    const ros = calculateROS(spreadFactor);
+                    
+                    // Risk level as percentage (0-100%)
+                    const riskLevel = (spreadFactor * 100).toFixed(1);
+                    
+                    // Determine risk category
+                    let riskCategory = 'Very Low';
+                    let riskColor = '#00ff00';
+                    if (spreadFactor >= 0.8) {
+                        riskCategory = 'Very High';
+                        riskColor = '#ff0000';
+                    } else if (spreadFactor >= 0.6) {
+                        riskCategory = 'High';
+                        riskColor = '#ffa500';
+                    } else if (spreadFactor >= 0.4) {
+                        riskCategory = 'Medium';
+                        riskColor = '#ffff00';
+                    } else if (spreadFactor >= 0.2) {
+                        riskCategory = 'Low';
+                        riskColor = '#9acd32';
+                    }
+
+                    // Calculate wind effect for this location
+                    const windSpeed = parseFloat(document.getElementById('windSpeed').value) || 0;
+                    const windDir = parseFloat(document.getElementById('windDirection').value) || 0;
+                    let windEffectText = 'N/A (no wind)';
+                    if (windSpeed > 0) {
+                        // Sample wind effect in 4 cardinal directions
+                        const northEffect = calculateWindInfluence(x, y, x, y-1);
+                        const eastEffect = calculateWindInfluence(x, y, x+1, y);
+                        const southEffect = calculateWindInfluence(x, y, x, y+1);
+                        const westEffect = calculateWindInfluence(x, y, x-1, y);
+                        windEffectText = `N:${northEffect.toFixed(2)}x E:${eastEffect.toFixed(2)}x S:${southEffect.toFixed(2)}x W:${westEffect.toFixed(2)}x`;
+                    }
+
+                    // Update info panel
+                    document.getElementById('location-info').innerHTML = `
+                        <div class="data-row">
+                            <span class="data-label">Latitude:</span>
+                            <span class="data-value">${lat.toFixed(6)}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Longitude:</span>
+                            <span class="data-value">${lng.toFixed(6)}°</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Pixel X:</span>
+                            <span class="data-value">${x}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Pixel Y:</span>
+                            <span class="data-value">${y}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Raw Value:</span>
+                            <span class="data-value">${value.toFixed(4)}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Base ROS:</span>
+                            <span class="data-value">${ros.toFixed(2)} m/min</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Wind Effect:</span>
+                            <span class="data-value" style="font-size: 10px;">${windEffectText}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Risk Level:</span>
+                            <span class="data-value" style="color: ${riskColor}; font-weight: bold;">${riskLevel}% (${riskCategory})</span>
+                        </div>
+                    `;
+
+                    // Show popup on map
+                    L.popup()
+                        .setLatLng(e.latlng)
+                        .setContent(`
+                            <div class="popup-title">🔥 Fire Risk Data</div>
+                            <div class="popup-value">Raw Value: ${value.toFixed(4)}</div>
+                            <div style="margin-top: 5px;">ROS: <strong>${ros.toFixed(2)} m/min</strong></div>
+                            <div style="margin-top: 5px; color: ${riskColor}; font-weight: bold;">
+                                Risk: ${riskLevel}% (${riskCategory})
+                            </div>
+                        `)
+                        .openOn(map);
+                } else {
+                    document.getElementById('location-info').innerHTML = `
+                        <div class="data-row">
+                            <span class="data-label">No data at this location</span>
+                        </div>
+                    `;
+                }
+            }
+        });
+
+        // Load the GeoTIFF when page loads
+        loadGeoTIFF();
+    </script>
+</body>
+</html>
