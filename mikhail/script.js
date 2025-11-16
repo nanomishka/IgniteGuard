@@ -538,7 +538,7 @@ function highlightSquaresInArea(linePoints) {
             if (timelineContainer && timelineSlider) {
                 timelineContainer.style.display = 'block';
                 timelineSlider.disabled = true;
-                timelineContainer.classList.add('disabled');
+                // НЕ добавляем класс 'disabled' - он будет добавлен только при запуске расчета
             }
             
             // Создаем симулятор асинхронно в фоне, чтобы не блокировать UI
@@ -549,10 +549,10 @@ function highlightSquaresInArea(linePoints) {
                     // Для включения логирования раскомментируйте следующую строку:
                     // fireSimulator.enableLogging = true;
                     
-                    // После создания симулятора активируем timeline и показываем кнопку расчета
+                    // После создания симулятора активируем timeline
                     if (timelineContainer && timelineSlider) {
                         timelineSlider.disabled = false;
-                        timelineContainer.classList.remove('disabled');
+                        // НЕ убираем класс 'disabled', так как он не был добавлен
                     }
                     
                 } catch (e) {
@@ -820,6 +820,7 @@ if (toggleGridBtn) {
 const timelineContainer = document.querySelector('.timeline-container');
 const timelineSlider = document.getElementById('timelineSlider');
 const timeDisplay = document.getElementById('timeDisplay');
+const processedTimeDisplay = document.getElementById('processedTimeDisplay');
 const fireAreaDisplay = document.getElementById('fireAreaDisplay');
 const progressContainer = document.querySelector('.progress-container');
 const progressBar = document.getElementById('progressBar');
@@ -875,9 +876,11 @@ if (timelineSlider && timeDisplay) {
         timeDisplay.textContent = timeText;
         currentTime = minutes;
         
-        // Сбрасываем прогресс на слайдере при изменении значения
-        if (sliderProgress) {
-            sliderProgress.style.width = '0%';
+        // Убрано сброс прогресса на слайдере - красная линия больше не закрашивается
+        
+        // Сбрасываем отображение обработанного времени
+        if (processedTimeDisplay) {
+            processedTimeDisplay.textContent = '0';
         }
         
         // Запускаем расчет автоматически при движении слайдера
@@ -903,9 +906,19 @@ async function updateFireVisualization(timeMinutes) {
         return;
     }
     
-    // Инициализируем прогресс на слайдере
-    if (sliderProgress) {
-        sliderProgress.style.width = '0%';
+    // Показываем индикатор "Calculating fire spread..." при запуске расчета
+    if (timelineContainer && timelineSlider) {
+        timelineContainer.classList.add('disabled');
+        timelineSlider.disabled = true;
+    }
+    
+    try {
+    
+    // Убрано инициализация прогресса на слайдере - красная линия больше не закрашивается
+    
+    // Инициализируем отображение обработанного времени
+    if (processedTimeDisplay) {
+        processedTimeDisplay.textContent = '0';
     }
     
     // Предвычисление больше не нужно - соседи находятся на лету
@@ -928,14 +941,12 @@ async function updateFireVisualization(timeMinutes) {
     const onIterationComplete = (iterationState) => {
         updateVisualizationFromState(iterationState);
         
-        // Обновляем прогресс на слайдере
-        // Прогресс заполняется только до выбранного времени, а не до конца шкалы
-        if (sliderProgress && startTime > 0) {
+        // Убрано обновление прогресса на слайдере - красная линия больше не закрашивается
+        
+        // Обновляем отображение обработанного времени
+        if (processedTimeDisplay && startTime > 0) {
             const processedTime = startTime - iterationState.remainingTime;
-            const progressPercent = Math.min(100, (processedTime / startTime) * 100);
-            // Применяем прогресс к максимальной ширине для выбранного времени
-            const currentWidth = (progressPercent / 100) * maxProgressWidth;
-            sliderProgress.style.width = `${currentWidth}%`;
+            processedTimeDisplay.textContent = formatTimeForProgress(processedTime);
         }
     };
     
@@ -944,9 +955,19 @@ async function updateFireVisualization(timeMinutes) {
     // Финальное обновление визуализации после завершения всех итераций
     updateVisualizationFromState(result);
     
-    // Обновляем прогресс на слайдере до максимальной ширины для выбранного времени
-    if (sliderProgress) {
-        sliderProgress.style.width = `${maxProgressWidth}%`;
+    // Убрано обновление прогресса на слайдере - красная линия больше не закрашивается
+    
+    // Обновляем отображение обработанного времени до финального значения
+    if (processedTimeDisplay) {
+        processedTimeDisplay.textContent = formatTimeForProgress(timeMinutes);
+    }
+    
+    } finally {
+        // Убираем индикатор "Calculating fire spread..." и включаем слайдер после завершения расчета
+        if (timelineContainer && timelineSlider) {
+            timelineContainer.classList.remove('disabled');
+            timelineSlider.disabled = false;
+        }
     }
 }
 

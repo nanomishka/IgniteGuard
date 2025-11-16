@@ -14,6 +14,7 @@ class FireSpreadSimulator {
         this.enableLogging = false; // По умолчанию выключено для производительности
         
         this.initializeGrid();
+        // НЕ делаем предвычисление соседей - все будет находиться "на лету" во время расчета
     }
     
     // Вспомогательный метод для логирования (проверяет флаг enableLogging)
@@ -147,7 +148,7 @@ class FireSpreadSimulator {
     
     precomputeNeighbors() {
         // Предвычисляем соседей для всех ячеек один раз
-        console.log('Предвычисление соседей...');
+        this.log('Предвычисление соседей...');
         const cellCenters = new Map(); // Кэш центров ячеек
         
         // Сначала собираем все центры
@@ -219,13 +220,19 @@ class FireSpreadSimulator {
                 if (result.length >= 4) break;
             }
             
-            this.neighborsMap.set(key, result);
+            // Сохраняем индексы соседей вместо ключей для быстрого доступа
+            const neighborIndices = result.map(neighborKey => {
+                const neighborIndex = this.cellIndexMap.get(neighborKey);
+                return neighborIndex;
+            }).filter(idx => idx !== undefined);
+            
+            this.neighborsMap.set(centerData.index, neighborIndices);
             processed++;
             if (processed % 10000 === 0) {
-                console.log(`Обработано ${processed} ячеек...`);
+                this.log(`Обработано ${processed} ячеек...`);
             }
         }
-        console.log('Предвычисление соседей завершено');
+        this.log('Предвычисление соседей завершено');
     }
     
     getNeighbors(cellKey) {
@@ -323,7 +330,7 @@ class FireSpreadSimulator {
         }
     }
     
-    // Простая функция поиска соседей для конкретной ячейки (на лету, без предвычисления)
+    // Функция поиска соседей для конкретной ячейки (на лету, без предвычисления)
     // Ищет соседей, которые соприкасаются стороной (север, юг, восток, запад)
     findNeighborsForCell(cellIndex) {
         const cell = this.gridData[cellIndex];
@@ -378,6 +385,8 @@ class FireSpreadSimulator {
         // currentState - объект с полями: burnedCells (Set), burningCells (Set), remainingBurnTimes (Map)
         // fireZone - массив точек линии огня
         // targetTime - время для прогноза в минутах
+        
+        // НЕ делаем предвычисление - все соседи находятся "на лету" во время расчета
         
         const burnedCells = new Set(currentState.burnedCells || []);
         const burningCells = new Set(currentState.burningCells || []);
@@ -472,7 +481,16 @@ class FireSpreadSimulator {
         
         // Основной цикл: новый алгоритм - выбираем одного соседа с минимальным временем
         let iteration = 0;
-        while (remainingTime > 0.001) { // Небольшой эпсилон для избежания бесконечного цикла
+        // Сохраняем список несгоревших соседей между итерациями для оптимизации
+        let unburnedNeighborsMap = new Map(); // neighborIndex -> {burnTime, sourceIndex}
+        // Сохраняем значения с предыдущей итерации
+        let prevBestNeighborIndex = null;
+        let prevBestNeighborTime = Infinity;
+        let prevNewBurningCellIndex = null; // Ячейка, которая была подожжена на предыдущей итерации
+        
+        // Продолжаем итерации, пока есть время и есть горящие ячейки
+        // Алгоритм продолжает работать, даже если список соседей временно пуст
+        while (remainingTime > 0.001 && burningCells.size > 0) { // Небольшой эпсилон для избежания бесконечного цикла
             iteration++;
             
             const burningCountStart = burningCells.size;
@@ -491,52 +509,121 @@ class FireSpreadSimulator {
             let bestNeighborTime = Infinity;
             let bestNeighborSourceIndex = null; // Ячейка, от которой нашли этого соседа
             
-            // Собираем всех несгоревших соседей с их временем горения
-            // Используем Map для исключения дубликатов (один сосед может быть соседом нескольких горящих ячеек)
-            // Сохраняем также источник (горящую ячейку, от которой нашли этого соседа)
-            const unburnedNeighborsMap = new Map(); // neighborIndex -> {burnTime, sourceIndex}
-            
-            for (let burningCellIndex of burningCells) {
-                const neighbors = this.findNeighborsForCell(burningCellIndex);
-                
-                for (let neighborIndex of neighbors) {
-                    // Пропускаем уже сгоревшие или горящие ячейки
-                    // Сгоревшие ячейки уже помечены в burnedCells при инициализации
-                    if (burnedCells.has(neighborIndex) || burningCells.has(neighborIndex)) {
-                        continue;
-                    }
+            // Если список соседей пуст, но есть горящие ячейки и осталось время,
+            // ищем соседей для всех горящих ячеек заново
+            if (unburnedNeighborsMap.size === 0 && burningCells.size > 0 && remainingTime > 0.001) {
+                // Собираем всех соседей для всех горящих ячеек
+                for (let burningCellIndex of burningCells) {
+                    const neighbors = this.findNeighborsForCell(burningCellIndex);
                     
-                    // Пропускаем, если уже добавили этого соседа
-                    if (unburnedNeighborsMap.has(neighborIndex)) {
-                        continue;
-                    }
-                    
-                    // Получаем время сгорания соседа
-                    const neighborKey = this.indexToKeyMap.get(neighborIndex);
-                    if (!neighborKey) {
-                        continue;
-                    }
-                    
-                    const neighborBurnTime = this.burnTimeMap.get(neighborKey);
-                    if (!neighborBurnTime || neighborBurnTime <= 0) {
-                        continue;
-                    }
-                    
-                    // Добавляем ВСЕХ несгоревших соседей в список для логирования
-                    // Сохраняем время горения и источник
-                    unburnedNeighborsMap.set(neighborIndex, {
-                        burnTime: neighborBurnTime,
-                        sourceIndex: burningCellIndex
-                    });
-                    
-                    // Для выбора лучшего соседа проверяем, успеет ли он сгореть за оставшееся время
-                    if (neighborBurnTime <= remainingTime) {
-                        // Если этот сосед быстрее всех найденных - запоминаем его
-                        if (neighborBurnTime < bestNeighborTime) {
-                            bestNeighborTime = neighborBurnTime;
-                            bestNeighborIndex = neighborIndex;
-                            bestNeighborSourceIndex = burningCellIndex;
+                    for (let neighborIndex of neighbors) {
+                        // Пропускаем уже сгоревшие или горящие ячейки
+                        if (burnedCells.has(neighborIndex) || burningCells.has(neighborIndex)) {
+                            continue;
                         }
+                        
+                        // Пропускаем, если уже добавили этого соседа
+                        if (unburnedNeighborsMap.has(neighborIndex)) {
+                            continue;
+                        }
+                        
+                        // Получаем время сгорания соседа
+                        const neighborKey = this.indexToKeyMap.get(neighborIndex);
+                        if (!neighborKey) {
+                            continue;
+                        }
+                        
+                        const neighborBurnTime = this.burnTimeMap.get(neighborKey);
+                        if (!neighborBurnTime || neighborBurnTime <= 0) {
+                            continue;
+                        }
+                        
+                        // Добавляем ВСЕХ несгоревших соседей в список
+                        unburnedNeighborsMap.set(neighborIndex, {
+                            burnTime: neighborBurnTime,
+                            sourceIndex: burningCellIndex
+                        });
+                    }
+                }
+            }
+            
+            // Оптимизация: на первой итерации собираем всех соседей,
+            // на последующих - только добавляем соседей новой горящей ячейки
+            if (iteration === 1) {
+                // Первая итерация: собираем всех соседей для всех горящих ячеек
+                for (let burningCellIndex of burningCells) {
+                    const neighbors = this.findNeighborsForCell(burningCellIndex);
+                    
+                    for (let neighborIndex of neighbors) {
+                        // Пропускаем уже сгоревшие или горящие ячейки
+                        if (burnedCells.has(neighborIndex) || burningCells.has(neighborIndex)) {
+                            continue;
+                        }
+                        
+                        // Пропускаем, если уже добавили этого соседа
+                        if (unburnedNeighborsMap.has(neighborIndex)) {
+                            continue;
+                        }
+                        
+                        // Получаем время сгорания соседа
+                        const neighborKey = this.indexToKeyMap.get(neighborIndex);
+                        if (!neighborKey) {
+                            continue;
+                        }
+                        
+                        const neighborBurnTime = this.burnTimeMap.get(neighborKey);
+                        if (!neighborBurnTime || neighborBurnTime <= 0) {
+                            continue;
+                        }
+                        
+                        // Добавляем ВСЕХ несгоревших соседей в список
+                        unburnedNeighborsMap.set(neighborIndex, {
+                            burnTime: neighborBurnTime,
+                            sourceIndex: burningCellIndex
+                        });
+                    }
+                }
+            } else {
+                // Последующие итерации: 
+                // 1. Удаляем только что подожженную ячейку из списка (если она была там)
+                if (prevBestNeighborIndex !== null && unburnedNeighborsMap.has(prevBestNeighborIndex)) {
+                    unburnedNeighborsMap.delete(prevBestNeighborIndex);
+                }
+                
+                // 2. Время уже обновлено в конце предыдущей итерации, поэтому просто используем текущие значения
+                
+                // 3. Добавляем только соседей новой горящей ячейки (той, что была подожжена на предыдущей итерации)
+                if (prevNewBurningCellIndex !== null) {
+                    const neighbors = this.findNeighborsForCell(prevNewBurningCellIndex);
+                    
+                    for (let neighborIndex of neighbors) {
+                        // Пропускаем уже сгоревшие или горящие ячейки
+                        if (burnedCells.has(neighborIndex) || burningCells.has(neighborIndex)) {
+                            continue;
+                        }
+                        
+                        // Пропускаем, если уже есть в списке
+                        if (unburnedNeighborsMap.has(neighborIndex)) {
+                            continue;
+                        }
+                        
+                        // Получаем время сгорания соседа
+                        const neighborKey = this.indexToKeyMap.get(neighborIndex);
+                        if (!neighborKey) {
+                            continue;
+                        }
+                        
+                        const neighborBurnTime = this.burnTimeMap.get(neighborKey);
+                        if (!neighborBurnTime || neighborBurnTime <= 0) {
+                            continue;
+                        }
+                        
+                        // Добавляем нового соседа в список с актуальным временем из burnTimeMap
+                        // (время уже могло быть уменьшено на предыдущих итерациях)
+                        unburnedNeighborsMap.set(neighborIndex, {
+                            burnTime: neighborBurnTime,
+                            sourceIndex: prevNewBurningCellIndex
+                        });
                     }
                 }
             }
@@ -560,8 +647,23 @@ class FireSpreadSimulator {
                 this.log(`  ID ${neighbor.index}, координаты (${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}): ${neighbor.burnTime.toFixed(3)} минут`);
             }
             
-            // Если нет соседей, которые успеют сгореть за оставшееся время,
-            // выбираем самую быструю из всех несгоревших соседей
+            // Ищем лучшего соседа из обновленного списка
+            // Сначала ищем соседей, которые успеют полностью сгореть за оставшееся время
+            for (let neighbor of unburnedNeighborsList) {
+                const neighborBurnTime = neighbor.burnTime;
+                
+                if (neighborBurnTime <= remainingTime) {
+                    // Если этот сосед быстрее всех найденных - запоминаем его
+                    if (neighborBurnTime < bestNeighborTime) {
+                        bestNeighborTime = neighborBurnTime;
+                        bestNeighborIndex = neighbor.index;
+                        bestNeighborSourceIndex = neighbor.sourceIndex;
+                    }
+                }
+            }
+            
+            // Если нет соседей, которые успеют полностью сгореть, но есть несгоревшие соседи,
+            // выбираем самую быструю из всех несгоревших соседей (даже если она не успеет полностью сгореть)
             if (bestNeighborIndex === null && unburnedNeighborsList.length > 0) {
                 // Находим самую быструю из всех несгоревших соседей
                 let fastestUnburnedNeighbor = null;
@@ -572,7 +674,7 @@ class FireSpreadSimulator {
                     if (neighbor.burnTime < fastestUnburnedTime) {
                         fastestUnburnedTime = neighbor.burnTime;
                         fastestUnburnedNeighbor = neighbor.index;
-                        fastestUnburnedSourceIndex = neighbor.sourceIndex; // Используем сохраненный источник
+                        fastestUnburnedSourceIndex = neighbor.sourceIndex;
                     }
                 }
                 
@@ -583,9 +685,105 @@ class FireSpreadSimulator {
                 }
             }
             
+            // Если не нашли соседа, но есть время и есть горящие ячейки, 
+            // попробуем найти соседей для всех горящих ячеек заново
             if (bestNeighborSourceIndex === null || bestNeighborTime === Infinity) {
-                this.log(`Не найдено ячеек для обработки. Завершение расчета.`);
-                break;
+                // Проверяем, есть ли еще горящие ячейки и осталось ли время
+                if (burningCells.size > 0 && remainingTime > 0.001) {
+                    // Пытаемся найти соседей для всех горящих ячеек
+                    for (let burningCellIndex of burningCells) {
+                        const neighbors = this.findNeighborsForCell(burningCellIndex);
+                        
+                        for (let neighborIndex of neighbors) {
+                            if (burnedCells.has(neighborIndex) || burningCells.has(neighborIndex)) {
+                                continue;
+                            }
+                            
+                            if (unburnedNeighborsMap.has(neighborIndex)) {
+                                continue;
+                            }
+                            
+                            const neighborKey = this.indexToKeyMap.get(neighborIndex);
+                            if (!neighborKey) {
+                                continue;
+                            }
+                            
+                            const neighborBurnTime = this.burnTimeMap.get(neighborKey);
+                            if (!neighborBurnTime || neighborBurnTime <= 0) {
+                                continue;
+                            }
+                            
+                            unburnedNeighborsMap.set(neighborIndex, {
+                                burnTime: neighborBurnTime,
+                                sourceIndex: burningCellIndex
+                            });
+                            
+                            // Выбираем самого быстрого из найденных
+                            if (neighborBurnTime < bestNeighborTime) {
+                                bestNeighborTime = neighborBurnTime;
+                                bestNeighborIndex = neighborIndex;
+                                bestNeighborSourceIndex = burningCellIndex;
+                            }
+                        }
+                    }
+                }
+                
+                // Если все еще не нашли соседа, но есть время и есть горящие ячейки,
+                // продолжаем вычитать время из горящих ячеек, пока они не сгорят или не закончится время
+                if (bestNeighborSourceIndex === null || bestNeighborTime === Infinity) {
+                    if (burningCells.size > 0 && remainingTime > 0.001) {
+                        // Находим горящую ячейку с минимальным оставшимся временем горения
+                        let minRemainingTime = Infinity;
+                        let cellToBurn = null;
+                        
+                        for (let burningCellIndex of burningCells) {
+                            const cellRemainingTime = remainingBurnTimes.get(burningCellIndex);
+                            if (cellRemainingTime !== undefined && cellRemainingTime > 0 && cellRemainingTime < minRemainingTime) {
+                                minRemainingTime = cellRemainingTime;
+                                cellToBurn = burningCellIndex;
+                            }
+                        }
+                        
+                        if (cellToBurn !== null) {
+                            // Вычитаем время из оставшегося времени
+                            const timeToSubtract = Math.min(minRemainingTime, remainingTime);
+                            remainingTime -= timeToSubtract;
+                            
+                            // Обновляем время горения ячейки
+                            const newRemainingTime = Math.max(0, minRemainingTime - timeToSubtract);
+                            remainingBurnTimes.set(cellToBurn, newRemainingTime);
+                            
+                            // Если ячейка полностью сгорела, помечаем её как сгоревшую
+                            if (newRemainingTime <= 0.001) {
+                                burningCells.delete(cellToBurn);
+                                burnedCells.add(cellToBurn);
+                                remainingBurnTimes.delete(cellToBurn);
+                            }
+                            
+                            this.log(`Вычитаем время из горящей ячейки: ${timeToSubtract.toFixed(3)} минут, осталось времени: ${remainingTime.toFixed(3)} минут`);
+                            
+                            // Вызываем callback для обновления визуализации
+                            if (onIterationComplete) {
+                                onIterationComplete({
+                                    burnedCells: new Set(burnedCells),
+                                    burningCells: new Set(burningCells),
+                                    remainingBurnTimes: new Map(remainingBurnTimes),
+                                    remainingTime: remainingTime,
+                                    iteration: iteration
+                                });
+                            }
+                            
+                            // Минимальная задержка для визуализации
+                            await new Promise(resolve => setTimeout(resolve, 10));
+                            
+                            // Продолжаем итерацию
+                            continue;
+                        }
+                    }
+                    
+                    this.log(`Не найдено ячеек для обработки. Завершение расчета.`);
+                    break;
+                }
             }
             
             if (bestNeighborIndex !== null) {
@@ -603,32 +801,50 @@ class FireSpreadSimulator {
                 this.log(`Помечаю ID ${bestNeighborIndex} красным как горящим`);
                 
                 // Шаг 2: Вычитаем это время из остальных несгоревших соседей
-                // Используем исходный список несгоревших соседей (до поджигания новой ячейки)
-                // Исключаем только что подожженную ячейку
-                const updatedNeighborsList = [];
-                for (let neighbor of unburnedNeighborsList) {
+                // Сначала определяем, сколько времени вычитать (может быть меньше, если оставшееся время меньше)
+                const timeToSubtract = Math.min(bestNeighborTime, remainingTime);
+                
+                // Обновляем время в burnTimeMap и unburnedNeighborsMap для всех несгоревших соседей
+                for (let [neighborIndex, data] of unburnedNeighborsMap) {
                     // Пропускаем только что подожженную ячейку
-                    if (neighbor.index === bestNeighborIndex) {
+                    if (neighborIndex === bestNeighborIndex) {
                         continue;
                     }
                     
-                    const neighborKey = this.indexToKeyMap.get(neighbor.index);
+                    const neighborKey = this.indexToKeyMap.get(neighborIndex);
                     if (!neighborKey) {
                         continue;
                     }
                     const currentBurnTime = this.burnTimeMap.get(neighborKey);
                     if (currentBurnTime && currentBurnTime > 0) {
-                        const newBurnTime = Math.max(0, currentBurnTime - bestNeighborTime);
+                        const newBurnTime = Math.max(0, currentBurnTime - timeToSubtract);
                         this.burnTimeMap.set(neighborKey, newBurnTime);
-                        updatedNeighborsList.push({
-                            index: neighbor.index,
-                            burnTime: newBurnTime
+                        // Также обновляем в unburnedNeighborsMap для следующей итерации
+                        unburnedNeighborsMap.set(neighborIndex, {
+                            burnTime: newBurnTime,
+                            sourceIndex: data.sourceIndex
                         });
                     }
                 }
                 
-                // Выводим список соседей после вычета времени
-                this.log(`Время соседей после вычета (${bestNeighborTime.toFixed(3)} минут):`);
+                // Выводим список соседей после вычета времени (для логирования)
+                this.log(`Время соседей после вычета (${timeToSubtract.toFixed(3)} минут):`);
+                const updatedNeighborsList = [];
+                for (let [neighborIndex, data] of unburnedNeighborsMap) {
+                    if (neighborIndex === bestNeighborIndex) {
+                        continue;
+                    }
+                    const neighborKey = this.indexToKeyMap.get(neighborIndex);
+                    if (neighborKey) {
+                        const newBurnTime = this.burnTimeMap.get(neighborKey);
+                        if (newBurnTime !== undefined) {
+                            updatedNeighborsList.push({
+                                index: neighborIndex,
+                                burnTime: newBurnTime
+                            });
+                        }
+                    }
+                }
                 for (let neighbor of updatedNeighborsList) {
                     const cell = this.gridData[neighbor.index];
                     const bounds = L.latLngBounds(cell.bounds);
@@ -637,7 +853,22 @@ class FireSpreadSimulator {
                 }
                 
                 // Шаг 3: Вычитаем время из общего оставшегося времени
-                remainingTime -= bestNeighborTime;
+                // timeToSubtract уже определен в шаге 2
+                remainingTime -= timeToSubtract;
+                
+                // Если сосед не успел полностью сгореть, обновляем его время горения
+                if (bestNeighborTime > timeToSubtract) {
+                    const bestNeighborKey = this.indexToKeyMap.get(bestNeighborIndex);
+                    if (bestNeighborKey) {
+                        const remainingBurnTime = bestNeighborTime - timeToSubtract;
+                        this.burnTimeMap.set(bestNeighborKey, remainingBurnTime);
+                        // Обновляем в unburnedNeighborsMap
+                        unburnedNeighborsMap.set(bestNeighborIndex, {
+                            burnTime: remainingBurnTime,
+                            sourceIndex: bestNeighborSourceIndex
+                        });
+                    }
+                }
             } else {
                 // Этот блок не должен выполняться, так как мы всегда выбираем соседа из несгоревших
                 // Но на всякий случай оставляем обработку
@@ -656,6 +887,11 @@ class FireSpreadSimulator {
             this.log(`Горящих точек в конце: ${burningCountEnd}`);
             this.log(`Сгоревших точек: ${burnedCountEnd}`);
             this.log(`Осталось времени: ${remainingTimeEnd.toFixed(3)} минут`);
+            
+            // Сохраняем значения для следующей итерации
+            prevBestNeighborIndex = bestNeighborIndex;
+            prevBestNeighborTime = bestNeighborTime;
+            prevNewBurningCellIndex = bestNeighborIndex; // Ячейка, которая была подожжена на этой итерации
             
             // Вызываем callback для обновления визуализации после каждой итерации
             if (onIterationComplete) {

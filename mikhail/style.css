@@ -123,7 +123,7 @@ header p {
 
 #map {
     width: 100%;
-    height: 500px;
+    height: 720px;
     border: none;
 }
 
@@ -224,16 +224,7 @@ header p {
 }
 
 .slider-progress {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 8px;
-    background: linear-gradient(90deg, #dc3545, #ff6b6b);
-    border-radius: 5px;
-    width: 0%;
-    transition: width 0.1s ease-out;
-    pointer-events: none;
-    z-index: 1;
+    display: none; /* Скрыто - красная линия прогресса больше не отображается */
 }
 
 .timeline-slider {
@@ -269,6 +260,7 @@ header p {
     background: #dc3545;
     cursor: pointer;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    margin-top: -6px; /* Центрируем thumb относительно слайдера (20px высота thumb - 8px высота слайдера) / 2 = 6px */
 }
 
 .timeline-slider::-moz-range-thumb {
@@ -444,7 +436,7 @@ footer a:hover {
     }
     
     #map {
-        height: 500px;
+        height: 720px;
     }
     
     body {
