@@ -13,45 +13,35 @@
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>Cyprus Map</h1>
-            <p>Interactive map of Cyprus</p>
-        </header>
+        <div id="map"></div>
         
-        <div class="controls">
-            <h3>Surface Types (Fire Spread Analysis)</h3>
-            <div class="control-group">
-                <label>
-                    <input type="checkbox" id="toggleForests" checked>
-                    <span class="legend-color" style="background: #dc3545;"></span>
-                    Forests
+        <div class="controls-panel">
+            <div class="control-item">
+                <label class="toggle-switch">
+                    <span class="toggle-label">Satellite</span>
+                    <input type="checkbox" id="mapTypeToggle" checked>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">Standard</span>
                 </label>
-                <label>
-                    <input type="checkbox" id="toggleGrass" checked>
-                    <span class="legend-color" style="background: #8fbc8f;"></span>
-                    Grass/Scrubland
-                </label>
-                <label>
-                    <input type="checkbox" id="toggleRoads" checked>
-                    <span class="legend-color" style="background: #666;"></span>
-                    Roads
-                </label>
+                <button id="drawAreaBtn" class="draw-btn">Add fire location</button>
+                <button id="clearAreaBtn" class="draw-btn" style="display: none;">Clear Area</button>
+                <button id="toggleGridBtn" class="draw-btn">Hide Grid</button>
             </div>
         </div>
-        
-        <div id="map"></div>
         
         <div class="timeline-container">
             <h3>Fire Spread Timeline</h3>
             <div class="timeline-controls">
                 <span class="time-label">Time: <span id="timeDisplay">0</span> hours</span>
-                <input type="range" id="timelineSlider" min="0" max="24" value="0" step="1" class="timeline-slider">
+                <input type="range" id="timelineSlider" min="0" max="6" value="0" step="1" class="timeline-slider">
                 <div class="timeline-labels">
                     <span>0h</span>
+                    <span>1h</span>
+                    <span>2h</span>
+                    <span>3h</span>
+                    <span>4h</span>
+                    <span>5h</span>
                     <span>6h</span>
-                    <span>12h</span>
-                    <span>18h</span>
-                    <span>24h</span>
                 </div>
             </div>
         </div>

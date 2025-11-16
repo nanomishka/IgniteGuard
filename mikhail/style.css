@@ -53,7 +53,7 @@ body > * {
 
 .container {
     max-width: 1400px;
-    margin: 0 auto;
+    margin: 40px auto 0;
     background: white;
     border-radius: 20px;
     box-shadow: 0 20px 60px rgba(255, 69, 0, 0.4), 0 0 40px rgba(220, 20, 60, 0.2);
@@ -127,6 +127,72 @@ header p {
     border: none;
 }
 
+.controls-panel {
+    background: #f8f9fa;
+    padding: 15px 40px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.control-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.control-item label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 1em;
+    color: #555;
+    font-weight: 500;
+}
+
+.control-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.draw-btn {
+    padding: 10px 20px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: 600;
+    transition: background 0.3s;
+    margin-left: 15px;
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.draw-btn:hover {
+    background: #c82333;
+}
+
+.draw-btn:active {
+    background: #bd2130;
+}
+
+.draw-btn.active {
+    background: #28a745;
+}
+
+.draw-btn.active:hover {
+    background: #218838;
+}
+
+.leaflet-heatmap-layer,
+.leaflet-highlight-layer {
+    pointer-events: none;
+}
+
 .timeline-container {
     background: #f8f9fa;
     padding: 25px 40px;
@@ -190,6 +256,43 @@ header p {
     margin-top: 5px;
 }
 
+.timeline-container.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    position: relative;
+}
+
+.timeline-container.disabled::after {
+    content: 'Calculating fire spread...';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 0.9em;
+    z-index: 10;
+    white-space: nowrap;
+}
+
+.timeline-slider:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #ccc;
+}
+
+.timeline-slider:disabled::-webkit-slider-thumb {
+    cursor: not-allowed;
+    background: #999;
+}
+
+.timeline-slider:disabled::-moz-range-thumb {
+    cursor: not-allowed;
+    background: #999;
+}
+
 footer {
     background: #f8f9fa;
     padding: 20px;
@@ -205,6 +308,55 @@ footer a {
 
 footer a:hover {
     text-decoration: underline;
+}
+
+.toggle-switch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.toggle-switch .toggle-label {
+    font-size: 1em;
+    color: #333;
+    font-weight: 600;
+    min-width: 70px;
+    text-align: center;
+}
+
+.toggle-switch input[type="checkbox"] {
+    display: none;
+}
+
+.toggle-slider {
+    position: relative;
+    width: 50px;
+    height: 24px;
+    background-color: #ccc;
+    border-radius: 24px;
+    transition: background-color 0.3s;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: white;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.3s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch input[type="checkbox"]:checked + .toggle-slider {
+    background-color: #4CAF50;
+}
+
+.toggle-switch input[type="checkbox"]:checked + .toggle-slider::before {
+    transform: translateX(26px);
 }
 
 /* Адаптивность */
