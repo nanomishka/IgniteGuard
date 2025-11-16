@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Convert GeoJSON to Grid</title>
+</head>
+<body>
+    <h1>GeoJSON to Grid Converter</h1>
+    <input type="file" id="fileInput" accept=".geojson,.json">
+    <button id="convertBtn" disabled>Convert to Grid Format</button>
+    <div id="status"></div>
+    <script>
+        let geojsonData = null;
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const status = document.getElementById('status');
+            status.textContent = 'Loading GeoJSON file...';
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    geojsonData = JSON.parse(event.target.result);
+                    document.getElementById('convertBtn').disabled = false;
+                    status.textContent = `Loaded ${geojsonData.features ? geojsonData.features.length : 0} features. Click "Convert" to process.`;
+                } catch (error) {
+                    status.textContent = 'Error parsing JSON: ' + error.message;
+                    document.getElementById('convertBtn').disabled = true;
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        function getBoundsFromPolygon(coordinates, properties) {
+            // Используем координаты полигона напрямую из coordinates[]
+            // Берем первую точку как SW и третью точку как NE (для прямоугольных полигонов)
+            const ring = Array.isArray(coordinates[0][0]) ? coordinates[0] : coordinates;
+            
+            // Для прямоугольных полигонов используем точки 0 (SW) и 2 (NE)
+            if (ring.length >= 3) {
+                // Точка 0 - это SW угол (минимальные координаты)
+                // Точка 2 - это NE угол (максимальные координаты)
+                const swLng = ring[0][0];
+                const swLat = ring[0][1];
+                const neLng = ring[2][0];
+                const neLat = ring[2][1];
+                
+                // Return bounds in format [[lat, lng], [lat, lng]]
+                return [
+                    [swLat, swLng],  // SW из координат полигона
+                    [neLat, neLng]   // NE из координат полигона
+                ];
+            }
+            
+            // Fallback: используем min/max если структура неожиданная
+            let minLat = Infinity, maxLat = -Infinity;
+            let minLng = Infinity, maxLng = -Infinity;
+            
+            for (let coord of ring) {
+                const lng = coord[0];
+                const lat = coord[1];
+                minLat = Math.min(minLat, lat);
+                maxLat = Math.max(maxLat, lat);
+                minLng = Math.min(minLng, lng);
+                maxLng = Math.max(maxLng, lng);
+            }
+            
+            return [
+                [minLat, minLng],
+                [maxLat, maxLng]
+            ];
+        }
+
+        document.getElementById('convertBtn').addEventListener('click', function() {
+            if (!geojsonData || !geojsonData.features) {
+                document.getElementById('status').textContent = 'No GeoJSON data loaded';
+                return;
+            }
+
+            const status = document.getElementById('status');
+            status.textContent = 'Processing features...';
+            
+            const gridData = [];
+            const features = geojsonData.features;
+            
+            for (let i = 0; i < features.length; i++) {
+                const feature = features[i];
+                
+                // Skip if not a polygon
+                if (!feature.geometry || feature.geometry.type !== 'Polygon') {
+                    continue;
+                }
+                
+                // Get bounds from polygon coordinates and properties
+                const bounds = getBoundsFromPolygon(feature.geometry.coordinates, feature.properties);
+                
+                // Get fire_rate from properties and calculate burn_time_minutes
+                // burn_time_minutes = размер_квадрата / fire_rate
+                // Для квадрата 100x100 метров: burn_time_minutes = 100 / fire_rate
+                const fireRate = feature.properties?.fire_rate || 1;
+                const cellSizeM = feature.properties?.tile_scale_m || 100; // размер квадрата в метрах
+                const burnTimeMinutes = cellSizeM / fireRate;
+                
+                gridData.push({
+                    bounds: bounds,
+                    burn_time_minutes: burnTimeMinutes,
+                    fire_rate: fireRate
+                });
+                
+                if ((i + 1) % 1000 === 0) {
+                    status.textContent = `Processed ${i + 1} / ${features.length} features...`;
+                }
+            }
+            
+            status.textContent = `Converting to JSON...`;
+            
+            const jsonStr = JSON.stringify(gridData, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'grid_data.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            status.textContent = `Conversion complete: ${gridData.length} features converted. File downloaded!`;
+        });
+    </script>
+</body>
+</html>
+
