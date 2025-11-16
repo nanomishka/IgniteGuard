@@ -5,13 +5,26 @@ class FireSpreadSimulator {
         this.cellSize = 100;
         
         this.cellIndexMap = new Map();
+        this.indexToKeyMap = new Map(); // Обратное отображение: индекс -> ключ
         this.burnTimeMap = new Map();
         this.igniteTimeMap = new Map();
         this.neighborsMap = new Map(); // Кэш соседей для оптимизации
         
+        // Флаг для управления логированием (можно изменить вручную для отладки)
+        this.enableLogging = false; // По умолчанию выключено для производительности
+        
         this.initializeGrid();
-        this.precomputeNeighbors(); // Предвычисляем соседей один раз
-        this.computeIgniteTimes();
+    }
+    
+    // Вспомогательный метод для логирования (проверяет флаг enableLogging)
+    log(...args) {
+        if (this.enableLogging) {
+            console.log(...args);
+        }
+        // Предвычисление соседей и расчет времени зажигания отключены при создании
+        // Они будут вызваны только по требованию через методы precomputeNeighbors() и computeIgniteTimes()
+        // this.precomputeNeighbors(); // Предвычисляем соседей один раз
+        // this.computeIgniteTimes();
     }
     
     initializeGrid() {
@@ -22,6 +35,7 @@ class FireSpreadSimulator {
             const key = this.getCellKey([center.lat, center.lng]);
             
             this.cellIndexMap.set(key, i);
+            this.indexToKeyMap.set(i, key); // Обратное отображение
             
             if (cell.burn_time_minutes !== null && cell.burn_time_minutes !== undefined) {
                 this.burnTimeMap.set(key, cell.burn_time_minutes);
@@ -235,8 +249,13 @@ class FireSpreadSimulator {
             const bounds = L.latLngBounds(cell.bounds);
             const center = bounds.getCenter();
             
-            const intersectsLine = this.lineIntersectsRectangle(this.fireLinePoints, bounds);
-            const isInside = this.isPointInPolygon(center, closedPolygon);
+            // Используем глобальные функции из script.js для единообразия
+            const intersectsLine = typeof lineIntersectsRectangle === 'function'
+                ? lineIntersectsRectangle(this.fireLinePoints, bounds)
+                : this.lineIntersectsRectangle(this.fireLinePoints, bounds);
+            const isInside = typeof isPointInPolygon === 'function'
+                ? isPointInPolygon(center, closedPolygon)
+                : this.isPointInPolygon(center, closedPolygon);
             
             if (intersectsLine) {
                 this.igniteTimeMap.set(key, 0);
@@ -304,6 +323,367 @@ class FireSpreadSimulator {
         }
     }
     
+    // Простая функция поиска соседей для конкретной ячейки (на лету, без предвычисления)
+    // Ищет соседей, которые соприкасаются стороной (север, юг, восток, запад)
+    findNeighborsForCell(cellIndex) {
+        const cell = this.gridData[cellIndex];
+        const bounds = L.latLngBounds(cell.bounds);
+        const center = bounds.getCenter();
+        const cellLat = center.lat;
+        const cellLng = center.lng;
+        
+        // Ищем соседей в 4 направлениях (север, юг, восток, запад)
+        // Расстояние примерно равно размеру ячейки (100м ≈ 0.001 градуса)
+        const searchDistance = 0.0015; // Немного больше, чтобы найти соседей
+        const neighbors = [];
+        
+        for (let [key, otherIndex] of this.cellIndexMap) {
+            if (otherIndex === cellIndex) continue;
+            
+            const otherCell = this.gridData[otherIndex];
+            const otherBounds = L.latLngBounds(otherCell.bounds);
+            const otherCenter = otherBounds.getCenter();
+            const otherLat = otherCenter.lat;
+            const otherLng = otherCenter.lng;
+            
+            const latDiff = Math.abs(otherLat - cellLat);
+            const lngDiff = Math.abs(otherLng - cellLng);
+            
+            // Проверяем, является ли ячейка соседом (в пределах searchDistance)
+            if (latDiff < searchDistance && lngDiff < searchDistance) {
+                const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
+                if (distance < searchDistance && distance > 0.0001) {
+                    // Определяем направление: сосед должен быть строго в одном из 4 направлений
+                    // (север, юг, восток, запад), а не по диагонали
+                    // Для этого проверяем, что разница в одном направлении значительно больше, чем в другом
+                    const isNorth = otherLat > cellLat && latDiff > lngDiff * 1.2;
+                    const isSouth = otherLat < cellLat && latDiff > lngDiff * 1.2;
+                    const isEast = otherLng > cellLng && lngDiff > latDiff * 1.2;
+                    const isWest = otherLng < cellLng && lngDiff > latDiff * 1.2;
+                    
+                    if (isNorth || isSouth || isEast || isWest) {
+                        neighbors.push(otherIndex);
+                    }
+                }
+            }
+        }
+        
+        return neighbors;
+    }
+    
+    // Новая функция прогноза распространения огня (упрощенный алгоритм)
+    // Принимает: текущую карту (состояние), помеченную зону где пожар, время для прогноза, callback для обновления визуализации
+    // Возвращает: область, которая будет под пожаром к этому времени
+    async predictFireSpread(currentState, fireZone, targetTime, onIterationComplete = null) {
+        // currentState - объект с полями: burnedCells (Set), burningCells (Set), remainingBurnTimes (Map)
+        // fireZone - массив точек линии огня
+        // targetTime - время для прогноза в минутах
+        
+        const burnedCells = new Set(currentState.burnedCells || []);
+        const burningCells = new Set(currentState.burningCells || []);
+        const remainingBurnTimes = new Map(currentState.remainingBurnTimes || []);
+        const closedPolygon = [...fireZone];
+        if (closedPolygon.length > 0 && 
+            (closedPolygon[0].lat !== closedPolygon[closedPolygon.length - 1].lat || 
+             closedPolygon[0].lng !== closedPolygon[closedPolygon.length - 1].lng)) {
+            closedPolygon.push(closedPolygon[0]);
+        }
+        
+        let remainingTime = targetTime;
+        
+        // Инициализация: помечаем ячейки внутри области или на линии огня как горящие
+        // Используем ту же структуру данных и логику, что и в highlightSquaresInArea
+        let initializedBurning = 0;
+        let skippedNoBurnTime = 0;
+        let skippedAlreadyBurned = 0;
+        let totalInArea = 0;
+        let totalIntersectsLine = 0;
+        let totalInside = 0;
+        
+        // Используем gridData напрямую (как в highlightSquaresInArea используется gridDataWithBurnTime)
+        for (let i = 0; i < this.gridData.length; i++) {
+            const cell = this.gridData[i];
+            const bounds = L.latLngBounds(cell.bounds);
+            const center = bounds.getCenter();
+            const cellKey = this.getCellKey([center.lat, center.lng]);
+            
+            // Используем глобальные функции из script.js для единообразия
+            const intersectsLine = typeof lineIntersectsRectangle === 'function' 
+                ? lineIntersectsRectangle(fireZone, bounds)
+                : this.lineIntersectsRectangle(fireZone, bounds);
+            const isInside = typeof isPointInPolygon === 'function'
+                ? isPointInPolygon(center, closedPolygon)
+                : this.isPointInPolygon(center, closedPolygon);
+            
+            // Если ячейка внутри области или пересекает линию огня
+            if (isInside || intersectsLine) {
+                totalInArea++;
+                if (intersectsLine) {
+                    totalIntersectsLine++;
+                }
+                if (isInside && !intersectsLine) {
+                    totalInside++;
+                }
+                
+                // Получаем индекс ячейки из cellIndexMap
+                const cellIndex = this.cellIndexMap.get(cellKey);
+                if (cellIndex === undefined || cellIndex === null) {
+                    continue; // Ячейка не найдена в cellIndexMap
+                }
+                
+                if (burnedCells.has(cellIndex)) {
+                    skippedAlreadyBurned++;
+                    continue;
+                }
+                if (burningCells.has(cellIndex)) {
+                    continue;
+                }
+                
+                // Логика: только ячейки, пересекающие линию огня, помечаются как горящие
+                // Ячейки внутри области (но не пересекающие линию) помечаются как сгоревшие
+                if (intersectsLine) {
+                    // Ячейка пересекает линию огня - помечаем как горящую
+                    const burnTime = this.burnTimeMap.get(cellKey);
+                    if (burnTime && burnTime > 0) {
+                        burningCells.add(cellIndex);
+                        remainingBurnTimes.set(cellIndex, burnTime);
+                        initializedBurning++;
+                    } else {
+                        skippedNoBurnTime++;
+                    }
+                } else if (isInside) {
+                    // Ячейка внутри области, но не пересекает линию - помечаем как сгоревшую
+                    burnedCells.add(cellIndex);
+                }
+            }
+        }
+        
+        // Логирование инициализации
+        this.log(`Инициализация:`);
+        this.log(`  Всего ячеек в gridData: ${this.gridData.length}`);
+        this.log(`  Всего ячеек в cellIndexMap: ${this.cellIndexMap.size}`);
+        this.log(`  Всего ячеек в области: ${totalInArea}`);
+        this.log(`  - Пересекают линию огня: ${totalIntersectsLine}`);
+        this.log(`  - Внутри области (не пересекают): ${totalInside}`);
+        this.log(`  Помечено горящих ячеек: ${initializedBurning}`);
+        this.log(`  Пропущено (уже сгоревшие): ${skippedAlreadyBurned}`);
+        this.log(`  Пропущено (нет времени сгорания): ${skippedNoBurnTime}`);
+        this.log(`  Всего горящих ячеек после инициализации: ${burningCells.size}`);
+        
+        // Основной цикл: новый алгоритм - выбираем одного соседа с минимальным временем
+        let iteration = 0;
+        while (remainingTime > 0.001) { // Небольшой эпсилон для избежания бесконечного цикла
+            iteration++;
+            
+            const burningCountStart = burningCells.size;
+            const burnedCountStart = burnedCells.size;
+            const remainingTimeStart = remainingTime;
+            
+            // Логирование состояния в начале итерации
+            this.log(`\n=== Итерация ${iteration} ===`);
+            this.log(`Горящих точек в начале: ${burningCountStart}`);
+            this.log(`Сгоревших точек: ${burnedCountStart}`);
+            this.log(`Осталось времени: ${remainingTimeStart.toFixed(3)} минут`);
+            
+            // Находим всех несгоревших соседей для всех горящих ячеек
+            // Ищем соседа с минимальным временем горения
+            let bestNeighborIndex = null;
+            let bestNeighborTime = Infinity;
+            let bestNeighborSourceIndex = null; // Ячейка, от которой нашли этого соседа
+            
+            // Собираем всех несгоревших соседей с их временем горения
+            // Используем Map для исключения дубликатов (один сосед может быть соседом нескольких горящих ячеек)
+            // Сохраняем также источник (горящую ячейку, от которой нашли этого соседа)
+            const unburnedNeighborsMap = new Map(); // neighborIndex -> {burnTime, sourceIndex}
+            
+            for (let burningCellIndex of burningCells) {
+                const neighbors = this.findNeighborsForCell(burningCellIndex);
+                
+                for (let neighborIndex of neighbors) {
+                    // Пропускаем уже сгоревшие или горящие ячейки
+                    // Сгоревшие ячейки уже помечены в burnedCells при инициализации
+                    if (burnedCells.has(neighborIndex) || burningCells.has(neighborIndex)) {
+                        continue;
+                    }
+                    
+                    // Пропускаем, если уже добавили этого соседа
+                    if (unburnedNeighborsMap.has(neighborIndex)) {
+                        continue;
+                    }
+                    
+                    // Получаем время сгорания соседа
+                    const neighborKey = this.indexToKeyMap.get(neighborIndex);
+                    if (!neighborKey) {
+                        continue;
+                    }
+                    
+                    const neighborBurnTime = this.burnTimeMap.get(neighborKey);
+                    if (!neighborBurnTime || neighborBurnTime <= 0) {
+                        continue;
+                    }
+                    
+                    // Добавляем ВСЕХ несгоревших соседей в список для логирования
+                    // Сохраняем время горения и источник
+                    unburnedNeighborsMap.set(neighborIndex, {
+                        burnTime: neighborBurnTime,
+                        sourceIndex: burningCellIndex
+                    });
+                    
+                    // Для выбора лучшего соседа проверяем, успеет ли он сгореть за оставшееся время
+                    if (neighborBurnTime <= remainingTime) {
+                        // Если этот сосед быстрее всех найденных - запоминаем его
+                        if (neighborBurnTime < bestNeighborTime) {
+                            bestNeighborTime = neighborBurnTime;
+                            bestNeighborIndex = neighborIndex;
+                            bestNeighborSourceIndex = burningCellIndex;
+                        }
+                    }
+                }
+            }
+            
+            // Преобразуем Map в массив для удобства
+            const unburnedNeighborsList = [];
+            for (let [neighborIndex, data] of unburnedNeighborsMap) {
+                unburnedNeighborsList.push({
+                    index: neighborIndex,
+                    burnTime: data.burnTime,
+                    sourceIndex: data.sourceIndex
+                });
+            }
+            
+            // Выводим список несгоревших соседей
+            this.log(`Несгоревших соседей: ${unburnedNeighborsList.length}`);
+            for (let neighbor of unburnedNeighborsList) {
+                const cell = this.gridData[neighbor.index];
+                const bounds = L.latLngBounds(cell.bounds);
+                const center = bounds.getCenter();
+                this.log(`  ID ${neighbor.index}, координаты (${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}): ${neighbor.burnTime.toFixed(3)} минут`);
+            }
+            
+            // Если нет соседей, которые успеют сгореть за оставшееся время,
+            // выбираем самую быструю из всех несгоревших соседей
+            if (bestNeighborIndex === null && unburnedNeighborsList.length > 0) {
+                // Находим самую быструю из всех несгоревших соседей
+                let fastestUnburnedNeighbor = null;
+                let fastestUnburnedTime = Infinity;
+                let fastestUnburnedSourceIndex = null;
+                
+                for (let neighbor of unburnedNeighborsList) {
+                    if (neighbor.burnTime < fastestUnburnedTime) {
+                        fastestUnburnedTime = neighbor.burnTime;
+                        fastestUnburnedNeighbor = neighbor.index;
+                        fastestUnburnedSourceIndex = neighbor.sourceIndex; // Используем сохраненный источник
+                    }
+                }
+                
+                if (fastestUnburnedNeighbor !== null) {
+                    bestNeighborIndex = fastestUnburnedNeighbor;
+                    bestNeighborTime = fastestUnburnedTime;
+                    bestNeighborSourceIndex = fastestUnburnedSourceIndex;
+                }
+            }
+            
+            if (bestNeighborSourceIndex === null || bestNeighborTime === Infinity) {
+                this.log(`Не найдено ячеек для обработки. Завершение расчета.`);
+                break;
+            }
+            
+            if (bestNeighborIndex !== null) {
+                // Найден новый сосед - поджигаем его
+                const bestCell = this.gridData[bestNeighborIndex];
+                const bestBounds = L.latLngBounds(bestCell.bounds);
+                const bestCenter = bestBounds.getCenter();
+                
+                this.log(`Найден сосед с минимальным временем горения: ID ${bestNeighborIndex}, время: ${bestNeighborTime.toFixed(3)} минут`);
+                
+                // Шаг 1: Помечаем найденного соседа как горящего
+                burningCells.add(bestNeighborIndex);
+                remainingBurnTimes.set(bestNeighborIndex, bestNeighborTime);
+                
+                this.log(`Помечаю ID ${bestNeighborIndex} красным как горящим`);
+                
+                // Шаг 2: Вычитаем это время из остальных несгоревших соседей
+                // Используем исходный список несгоревших соседей (до поджигания новой ячейки)
+                // Исключаем только что подожженную ячейку
+                const updatedNeighborsList = [];
+                for (let neighbor of unburnedNeighborsList) {
+                    // Пропускаем только что подожженную ячейку
+                    if (neighbor.index === bestNeighborIndex) {
+                        continue;
+                    }
+                    
+                    const neighborKey = this.indexToKeyMap.get(neighbor.index);
+                    if (!neighborKey) {
+                        continue;
+                    }
+                    const currentBurnTime = this.burnTimeMap.get(neighborKey);
+                    if (currentBurnTime && currentBurnTime > 0) {
+                        const newBurnTime = Math.max(0, currentBurnTime - bestNeighborTime);
+                        this.burnTimeMap.set(neighborKey, newBurnTime);
+                        updatedNeighborsList.push({
+                            index: neighbor.index,
+                            burnTime: newBurnTime
+                        });
+                    }
+                }
+                
+                // Выводим список соседей после вычета времени
+                this.log(`Время соседей после вычета (${bestNeighborTime.toFixed(3)} минут):`);
+                for (let neighbor of updatedNeighborsList) {
+                    const cell = this.gridData[neighbor.index];
+                    const bounds = L.latLngBounds(cell.bounds);
+                    const center = bounds.getCenter();
+                    this.log(`  ID ${neighbor.index}, координаты (${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}): ${neighbor.burnTime.toFixed(3)} минут`);
+                }
+                
+                // Шаг 3: Вычитаем время из общего оставшегося времени
+                remainingTime -= bestNeighborTime;
+            } else {
+                // Этот блок не должен выполняться, так как мы всегда выбираем соседа из несгоревших
+                // Но на всякий случай оставляем обработку
+                this.log(`Ошибка: bestNeighborIndex === null, но bestNeighborSourceIndex !== null`);
+                remainingTime -= bestNeighborTime;
+            }
+            
+            // НЕ проверяем и не помечаем сгоревшие ячейки - это будет сделано позже
+            
+            // Итоговые значения в конце итерации
+            const burningCountEnd = burningCells.size;
+            const burnedCountEnd = burnedCells.size;
+            const remainingTimeEnd = remainingTime;
+            
+            this.log(`Горящих точек в начале: ${burningCountStart}`);
+            this.log(`Горящих точек в конце: ${burningCountEnd}`);
+            this.log(`Сгоревших точек: ${burnedCountEnd}`);
+            this.log(`Осталось времени: ${remainingTimeEnd.toFixed(3)} минут`);
+            
+            // Вызываем callback для обновления визуализации после каждой итерации
+            if (onIterationComplete) {
+                onIterationComplete({
+                    burnedCells: new Set(burnedCells),
+                    burningCells: new Set(burningCells),
+                    remainingBurnTimes: new Map(remainingBurnTimes),
+                    remainingTime: remainingTime,
+                    iteration: iteration
+                });
+            }
+            
+            // Минимальная задержка для визуализации постепенного закрашивания области
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        
+        // Помечаем все горящие ячейки, которые еще не сгорели
+        // (те, у которых remainingTime > 0, но они уже начали гореть)
+        
+        // Возвращаем результат: область под пожаром
+        return {
+            burnedCells: burnedCells,
+            burningCells: burningCells,
+            remainingBurnTimes: remainingBurnTimes,
+            remainingTime: remainingTime
+        };
+    }
+    
     getStateAt(t) {
         const burningMask = new Map();
         const burnedMask = new Map();
@@ -350,111 +730,5 @@ class FireSpreadSimulator {
             unburnedMask: unburnedMask
         };
     }
-    
-    // Новая функция для прогноза распространения огня
-    // На вход: текущая карта (burnedCells - Set индексов сгоревших ячеек), зона пожара (fireLinePoints), время прогноза (timeMinutes)
-    // На выход: Set индексов ячеек, которые будут под пожаром к этому времени
-    predictFireSpread(burnedCells, fireLinePoints, timeMinutes) {
-        const closedPolygon = [...fireLinePoints];
-        if (closedPolygon.length > 0 && 
-            (closedPolygon[0].lat !== closedPolygon[closedPolygon.length - 1].lat || 
-             closedPolygon[0].lng !== closedPolygon[closedPolygon.length - 1].lng)) {
-            closedPolygon.push(closedPolygon[0]);
-        }
-        
-        // Инициализация: помечаем ячейки на линии огня как горящие
-        const burningCells = new Set(); // Индексы горящих ячеек
-        const remainingBurnTime = new Map(); // Оставшееся время горения для каждой ячейки
-        let remainingTime = timeMinutes; // Оставшееся время прогноза
-        
-        // Находим ячейки на линии огня и внутри области
-        for (let [key, cellIndex] of this.cellIndexMap) {
-            const cell = this.gridData[cellIndex];
-            const bounds = L.latLngBounds(cell.bounds);
-            const center = bounds.getCenter();
-            
-            const intersectsLine = this.lineIntersectsRectangle(fireLinePoints, bounds);
-            const isInside = this.isPointInPolygon(center, closedPolygon);
-            
-            if (intersectsLine || isInside) {
-                if (!burnedCells.has(cellIndex)) {
-                    const burnTime = this.burnTimeMap.get(key);
-                    if (burnTime !== null && burnTime !== undefined && burnTime > 0) {
-                        burningCells.add(cellIndex);
-                        remainingBurnTime.set(cellIndex, burnTime);
-                    }
-                }
-            }
-        }
-        
-        // Основной цикл: находим ячейку, которая сгорит раньше всех, и распространяем огонь
-        while (remainingTime > 0 && burningCells.size > 0) {
-            // Находим ячейку с минимальным временем горения
-            let minBurnTime = Infinity;
-            let nextCellIndex = null;
-            
-            for (let cellIndex of burningCells) {
-                const burnTime = remainingBurnTime.get(cellIndex);
-                if (burnTime < minBurnTime) {
-                    minBurnTime = burnTime;
-                    nextCellIndex = cellIndex;
-                }
-            }
-            
-            // Если минимальное время горения больше оставшегося времени, останавливаемся
-            if (minBurnTime > remainingTime || nextCellIndex === null) {
-                break;
-            }
-            
-            // Помечаем ячейку как сгоревшую
-            burningCells.delete(nextCellIndex);
-            burnedCells.add(nextCellIndex);
-            remainingBurnTime.delete(nextCellIndex);
-            
-            // Вычитаем время горения этой ячейки из оставшегося времени
-            remainingTime -= minBurnTime;
-            
-            // Вычитаем это время из всех остальных горящих ячеек
-            for (let cellIndex of burningCells) {
-                const currentTime = remainingBurnTime.get(cellIndex);
-                remainingBurnTime.set(cellIndex, currentTime - minBurnTime);
-            }
-            
-            // Находим соседей сгоревшей ячейки и добавляем их в горящие
-            const cellKey = this.getCellKeyFromIndex(nextCellIndex);
-            if (cellKey) {
-                const neighbors = this.getNeighbors(cellKey);
-                
-                for (let neighborKey of neighbors) {
-                    const neighborIndex = this.cellIndexMap.get(neighborKey);
-                    if (neighborIndex !== undefined && 
-                        !burnedCells.has(neighborIndex) && 
-                        !burningCells.has(neighborIndex)) {
-                        
-                        const neighborBurnTime = this.burnTimeMap.get(neighborKey);
-                        if (neighborBurnTime !== null && 
-                            neighborBurnTime !== undefined && 
-                            neighborBurnTime > 0) {
-                            
-                            burningCells.add(neighborIndex);
-                            remainingBurnTime.set(neighborIndex, neighborBurnTime);
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Возвращаем все сгоревшие ячейки (включая изначально горящие)
-        return burnedCells;
-    }
-    
-    // Вспомогательная функция для получения ключа ячейки по индексу
-    getCellKeyFromIndex(cellIndex) {
-        for (let [key, index] of this.cellIndexMap) {
-            if (index === cellIndex) {
-                return key;
-            }
-        }
-        return null;
-    }
 }
+

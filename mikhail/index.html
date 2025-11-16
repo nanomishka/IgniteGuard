@@ -32,11 +32,27 @@
         <div class="timeline-container">
             <h3>Fire Spread Timeline</h3>
             <div class="timeline-controls">
-                <span class="time-label">Time: <span id="timeDisplay">0</span> minutes</span>
-                <input type="range" id="timelineSlider" min="0" max="10" value="0" step="1" class="timeline-slider">
+                <span class="time-label">Time: <span id="timeDisplay">0</span></span>
+                <div class="slider-wrapper">
+                    <div class="slider-progress" id="sliderProgress"></div>
+                    <input type="range" id="timelineSlider" min="0" max="6" value="0" step="1" class="timeline-slider">
+                </div>
                 <div class="timeline-labels">
-                    <span>0m</span>
-                    <span>10m</span>
+                    <span>0</span>
+                    <span>30min</span>
+                    <span>1h</span>
+                    <span>1.5h</span>
+                    <span>2h</span>
+                    <span>3h</span>
+                    <span>5h</span>
+                </div>
+                <div class="progress-container" style="margin-top: 10px; display: none;">
+                    <div class="progress-bar-wrapper">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <div class="progress-text" id="progressText" style="font-size: 0.85em; color: #666; margin-top: 5px; text-align: center;">
+                        Calculating: <span id="progressTime">0</span> / <span id="targetTime">0</span>
+                    </div>
                 </div>
             </div>
             <div class="fire-area-info">

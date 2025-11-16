@@ -1,5 +1,5 @@
 // Initialize map centered on Limassol
-const map = L.map('map').setView([34.75, 32.95], 12);
+const map = L.map('map').setView([34.75, 32.95], 15);
 
 // Create satellite and standard map layers
 const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -415,6 +415,8 @@ function highlightSquaresInArea(linePoints) {
     
     let highlightedCount = 0;
     let initialFireArea = 0;
+    let burningCount = 0; // Горящие области (красные)
+    let burnedCount = 0; // Сгоревшие области (серые)
     
     for (let i = 0; i < gridSquares.length; i++) {
         let square = gridSquares[i];
@@ -452,6 +454,9 @@ function highlightSquaresInArea(linePoints) {
             // Сохраняем состояние квадрата: время начала горения (0 для начальных красных квадратов)
             if (intersectsLine) {
                 squareFireState.set(i, 0); // Красные квадраты - огонь с самого начала
+                burningCount++;
+            } else {
+                burnedCount++;
             }
             
             const original = originalSquareColors.get(square);
@@ -488,6 +493,42 @@ function highlightSquaresInArea(linePoints) {
         }
     }
     
+    // Подсчет на основе gridData для сравнения с симулятором
+    let gridDataBurningCount = 0;
+    let gridDataBurnedCount = 0;
+    let gridDataTotalCount = 0;
+    
+    if (gridDataWithBurnTime && gridDataWithBurnTime.length > 0) {
+        for (let item of gridDataWithBurnTime) {
+            const bounds = L.latLngBounds(item.bounds);
+            const center = bounds.getCenter();
+            const intersectsLine = lineIntersectsRectangle(linePoints, bounds);
+            const isInside = isPointInPolygon(center, closedPolygon);
+            
+            if (intersectsLine || isInside) {
+                gridDataTotalCount++;
+                if (intersectsLine) {
+                    gridDataBurningCount++;
+                } else {
+                    gridDataBurnedCount++;
+                }
+            }
+        }
+    }
+    
+    // Логирование информации о нарисованной области
+    console.log(`=== Область пожара нарисована ===`);
+    console.log(`Визуализация (gridSquares):`);
+    console.log(`  Горящих областей: ${burningCount}`);
+    console.log(`  Сгоревших областей: ${burnedCount}`);
+    console.log(`  Всего областей: ${highlightedCount}`);
+    console.log(`Данные для симулятора (gridData):`);
+    console.log(`  Горящих ячеек: ${gridDataBurningCount}`);
+    console.log(`  Сгоревших ячеек: ${gridDataBurnedCount}`);
+    console.log(`  Всего ячеек: ${gridDataTotalCount}`);
+    console.log(`Площадь пожара: ${formatFireArea(initialFireArea)}`);
+    console.log(`================================`);
+    
     if (fireAreaDisplay) {
         fireAreaDisplay.textContent = formatFireArea(initialFireArea);
     }
@@ -503,15 +544,17 @@ function highlightSquaresInArea(linePoints) {
             // Создаем симулятор асинхронно в фоне, чтобы не блокировать UI
             const createSimulator = () => {
                 try {
-                    // Инициализируем с пустым набором сгоревших ячеек
-                    const initialBurnedCells = new Set();
                     fireSimulator = new FireSpreadSimulator(gridDataWithBurnTime, linePoints);
                     
-                    // После создания симулятора активируем timeline
+                    // Для включения логирования раскомментируйте следующую строку:
+                    // fireSimulator.enableLogging = true;
+                    
+                    // После создания симулятора активируем timeline и показываем кнопку расчета
                     if (timelineContainer && timelineSlider) {
                         timelineSlider.disabled = false;
                         timelineContainer.classList.remove('disabled');
                     }
+                    
                 } catch (e) {
                     console.error('Error creating fire simulator:', e);
                     fireSimulator = null;
@@ -778,24 +821,68 @@ const timelineContainer = document.querySelector('.timeline-container');
 const timelineSlider = document.getElementById('timelineSlider');
 const timeDisplay = document.getElementById('timeDisplay');
 const fireAreaDisplay = document.getElementById('fireAreaDisplay');
+const progressContainer = document.querySelector('.progress-container');
+const progressBar = document.getElementById('progressBar');
+const progressTime = document.getElementById('progressTime');
+const targetTimeDisplay = document.getElementById('targetTime');
+const sliderProgress = document.getElementById('sliderProgress');
 
 // Инициализация timeline - скрываем до рисования области
 if (timelineContainer) {
     timelineContainer.style.display = 'none';
 }
 
-// Timeline включен для первых 10 минут
+// Маппинг значений слайдера в минуты: 0, 1, 2, 3, 4, 5, 6 -> 0, 30, 60, 90, 120, 180, 300 минут
+const sliderToMinutes = [0, 30, 60, 90, 120, 180, 300];
+
+// Функция форматирования времени для прогресса
+function formatTimeForProgress(minutes) {
+    if (minutes === 0) {
+        return '0';
+    } else if (minutes < 60) {
+        return `${minutes.toFixed(1)}min`;
+    } else if (minutes === 60) {
+        return '1h';
+    } else if (minutes === 90) {
+        return '1.5h';
+    } else {
+        const hours = minutes / 60;
+        return `${hours.toFixed(1)}h`;
+    }
+}
+
+// Timeline включен для 0-5 часов
 if (timelineSlider && timeDisplay) {
     timelineSlider.addEventListener('input', function(e) {
-        const minutes = parseInt(e.target.value); // Теперь значение слайдера напрямую в минутах (0-10)
-        timeDisplay.textContent = minutes;
+        const sliderValue = parseInt(e.target.value); // Значение слайдера (0-6)
+        const minutes = sliderToMinutes[sliderValue] || 0;
+        
+        // Форматируем отображение времени
+        let timeText = '';
+        if (minutes === 0) {
+            timeText = '0';
+        } else if (minutes < 60) {
+            timeText = `${minutes}min`;
+        } else if (minutes === 60) {
+            timeText = '1h';
+        } else if (minutes === 90) {
+            timeText = '1.5h';
+        } else {
+            const hours = minutes / 60;
+            timeText = `${hours}h`;
+        }
+        
+        timeDisplay.textContent = timeText;
         currentTime = minutes;
         
-        // Ограничиваем расчет только первыми 10 минутами
-        if (minutes <= 10 && fireSimulator && fireLinePoints && gridDataWithBurnTime) {
+        // Сбрасываем прогресс на слайдере при изменении значения
+        if (sliderProgress) {
+            sliderProgress.style.width = '0%';
+        }
+        
+        // Запускаем расчет автоматически при движении слайдера
+        if (fireSimulator && fireLinePoints && gridDataWithBurnTime) {
             updateFireVisualization(minutes);
-        } else if (minutes > 10) {
-            console.warn('Timeline ограничен 10 минутами');
         } else {
             console.warn('Cannot update visualization:', {
                 hasSimulator: !!fireSimulator,
@@ -806,9 +893,9 @@ if (timelineSlider && timeDisplay) {
     });
 }
 
-function updateFireVisualization(timeMinutes) {
-    // Ограничиваем расчет только первыми 10 минутами
-    if (timeMinutes > 10) {
+async function updateFireVisualization(timeMinutes) {
+    // Расчет для 0-300 минут (5 часов)
+    if (timeMinutes > 300) {
         return;
     }
     
@@ -816,9 +903,80 @@ function updateFireVisualization(timeMinutes) {
         return;
     }
     
-    // Используем новую функцию predictFireSpread
-    const initialBurnedCells = new Set();
-    const burnedCells = fireSimulator.predictFireSpread(initialBurnedCells, fireLinePoints, timeMinutes);
+    // Инициализируем прогресс на слайдере
+    if (sliderProgress) {
+        sliderProgress.style.width = '0%';
+    }
+    
+    // Предвычисление больше не нужно - соседи находятся на лету
+    
+    // Используем новую функцию прогноза распространения огня
+    const currentState = {
+        burnedCells: new Set(),
+        burningCells: new Set(),
+        remainingBurnTimes: new Map()
+    };
+    
+    const startTime = timeMinutes;
+    const maxTime = 300; // Максимальное время на слайдере (5 часов)
+    
+    // Вычисляем максимальную ширину прогресс-бара для выбранного времени
+    // Например, если выбрано 90 минут, то максимальная ширина = 90/300 = 30%
+    const maxProgressWidth = (startTime / maxTime) * 100;
+    
+    // Callback для обновления визуализации после каждой итерации
+    const onIterationComplete = (iterationState) => {
+        updateVisualizationFromState(iterationState);
+        
+        // Обновляем прогресс на слайдере
+        // Прогресс заполняется только до выбранного времени, а не до конца шкалы
+        if (sliderProgress && startTime > 0) {
+            const processedTime = startTime - iterationState.remainingTime;
+            const progressPercent = Math.min(100, (processedTime / startTime) * 100);
+            // Применяем прогресс к максимальной ширине для выбранного времени
+            const currentWidth = (progressPercent / 100) * maxProgressWidth;
+            sliderProgress.style.width = `${currentWidth}%`;
+        }
+    };
+    
+    const result = await fireSimulator.predictFireSpread(currentState, fireLinePoints, timeMinutes, onIterationComplete);
+    
+    // Финальное обновление визуализации после завершения всех итераций
+    updateVisualizationFromState(result);
+    
+    // Обновляем прогресс на слайдере до максимальной ширины для выбранного времени
+    if (sliderProgress) {
+        sliderProgress.style.width = `${maxProgressWidth}%`;
+    }
+}
+
+// Функция для обновления визуализации на основе состояния
+function updateVisualizationFromState(state) {
+    // Преобразуем результат в формат для визуализации
+    const visualizationState = {
+        burningMask: new Map(),
+        burnedMask: new Map(),
+        unburnedMask: new Map()
+    };
+    
+    for (let [key, cellIndex] of fireSimulator.cellIndexMap) {
+        if (state.burnedCells.has(cellIndex)) {
+            visualizationState.burnedMask.set(cellIndex, true);
+            visualizationState.burningMask.set(cellIndex, false);
+            visualizationState.unburnedMask.set(cellIndex, false);
+        } else if (state.burningCells.has(cellIndex)) {
+            visualizationState.burningMask.set(cellIndex, true);
+            visualizationState.burnedMask.set(cellIndex, false);
+            visualizationState.unburnedMask.set(cellIndex, false);
+        } else {
+            visualizationState.unburnedMask.set(cellIndex, true);
+            visualizationState.burningMask.set(cellIndex, false);
+            visualizationState.burnedMask.set(cellIndex, false);
+        }
+    }
+    
+    const stateToUse = visualizationState;
+    
     const closedPolygon = [...fireLinePoints];
     if (closedPolygon.length > 0 && 
         (closedPolygon[0].lat !== closedPolygon[closedPolygon.length - 1].lat || 
@@ -870,18 +1028,12 @@ function updateFireVisualization(timeMinutes) {
         let isBurning = false;
         let isBurned = false;
         
-        if (i < gridDataWithBurnTime.length) {
-            const cellData = gridDataWithBurnTime[i];
-            if (cellData && cellData.bounds) {
-                const cellBounds = L.latLngBounds(cellData.bounds);
-                const cellCenter = cellBounds.getCenter();
-                const cellKey = `${cellCenter.lat.toFixed(6)}_${cellCenter.lng.toFixed(6)}`;
-                const cellIndexInSimulator = fireSimulator.cellIndexMap.get(cellKey);
-                if (cellIndexInSimulator !== undefined && cellIndexInSimulator !== null) {
-                    isBurning = state.burningMask.get(cellIndexInSimulator) === true;
-                    isBurned = state.burnedMask.get(cellIndexInSimulator) === true;
-                }
-            }
+        // Ищем соответствующую ячейку в симуляторе по координатам центра
+        const cellKey = `${center.lat.toFixed(6)}_${center.lng.toFixed(6)}`;
+        const cellIndexInSimulator = fireSimulator.cellIndexMap.get(cellKey);
+        if (cellIndexInSimulator !== undefined && cellIndexInSimulator !== null) {
+            isBurning = stateToUse.burningMask.get(cellIndexInSimulator) === true;
+            isBurned = stateToUse.burnedMask.get(cellIndexInSimulator) === true;
         }
         
         if (isInside || isBurning || isBurned) {
@@ -895,13 +1047,14 @@ function updateFireVisualization(timeMinutes) {
                 
                 let fillColor, fillOpacity;
                 
-                if (isInside) {
-                    fillColor = '#1a1a1a';
-                    fillOpacity = 0.6;
-                } else if (isBurning) {
+                // Приоритет: горящие (красные) > сгоревшие (серые) > внутри области (серые)
+                if (isBurning) {
                     fillColor = '#cc0000';
                     fillOpacity = 0.8;
                 } else if (isBurned) {
+                    fillColor = '#1a1a1a';
+                    fillOpacity = 0.6;
+                } else if (isInside) {
                     fillColor = '#1a1a1a';
                     fillOpacity = 0.6;
                 } else {
