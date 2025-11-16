@@ -2,21 +2,24 @@ class FireSpreadSimulator {
     constructor(gridData, fireLinePoints) {
         this.gridData = gridData;
         this.fireLinePoints = fireLinePoints;
-        this.cellSize = 10;
+        this.cellSize = 100;
         
         this.cellIndexMap = new Map();
         this.burnTimeMap = new Map();
         this.igniteTimeMap = new Map();
+        this.neighborsMap = new Map(); // Кэш соседей для оптимизации
         
         this.initializeGrid();
+        this.precomputeNeighbors(); // Предвычисляем соседей один раз
         this.computeIgniteTimes();
     }
     
     initializeGrid() {
         for (let i = 0; i < this.gridData.length; i++) {
             const cell = this.gridData[i];
-            const center = cell.center;
-            const key = this.getCellKey(center);
+            const bounds = L.latLngBounds(cell.bounds);
+            const center = bounds.getCenter();
+            const key = this.getCellKey([center.lat, center.lng]);
             
             this.cellIndexMap.set(key, i);
             
@@ -128,68 +131,92 @@ class FireSpreadSimulator {
                Math.min(yi, yj) - epsilon <= yk && yk <= Math.max(yi, yj) + epsilon;
     }
     
+    precomputeNeighbors() {
+        // Предвычисляем соседей для всех ячеек один раз
+        console.log('Предвычисление соседей...');
+        const cellCenters = new Map(); // Кэш центров ячеек
+        
+        // Сначала собираем все центры
+        for (let [key, index] of this.cellIndexMap) {
+            const cell = this.gridData[index];
+            const bounds = L.latLngBounds(cell.bounds);
+            const center = bounds.getCenter();
+            cellCenters.set(key, { lat: center.lat, lng: center.lng, index: index });
+        }
+        
+        const maxDistance = 0.002;
+        let processed = 0;
+        
+        // Для каждой ячейки находим соседей
+        for (let [key, centerData] of cellCenters) {
+            const { lat, lng } = centerData;
+            const candidates = [];
+            
+            // Ищем только в близких ячейках (оптимизация: проверяем только близкие координаты)
+            for (let [otherKey, otherCenterData] of cellCenters) {
+                if (otherKey === key) continue;
+                
+                const { lat: otherLat, lng: otherLng } = otherCenterData;
+                const latDiff = Math.abs(otherLat - lat);
+                const lngDiff = Math.abs(otherLng - lng);
+                
+                // Быстрая проверка без вычисления sqrt
+                if (latDiff < maxDistance && lngDiff < maxDistance) {
+                    const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
+                    if (distance < maxDistance && distance > 0.0001) {
+                        candidates.push({
+                            key: otherKey,
+                            latDiff: latDiff,
+                            lngDiff: lngDiff,
+                            distance: distance,
+                            otherLat: otherLat,
+                            otherLng: otherLng
+                        });
+                    }
+                }
+            }
+            
+            candidates.sort((a, b) => a.distance - b.distance);
+            
+            const result = [];
+            const directions = { north: null, south: null, east: null, west: null };
+            
+            for (let candidate of candidates) {
+                const { key: otherKey, latDiff, lngDiff, otherLat, otherLng } = candidate;
+                
+                if (latDiff > lngDiff * 1.5) {
+                    if (otherLat > lat && !directions.north) {
+                        directions.north = otherKey;
+                        result.push(otherKey);
+                    } else if (otherLat < lat && !directions.south) {
+                        directions.south = otherKey;
+                        result.push(otherKey);
+                    }
+                } else if (lngDiff > latDiff * 1.5) {
+                    if (otherLng > lng && !directions.east) {
+                        directions.east = otherKey;
+                        result.push(otherKey);
+                    } else if (otherLng < lng && !directions.west) {
+                        directions.west = otherKey;
+                        result.push(otherKey);
+                    }
+                }
+                
+                if (result.length >= 4) break;
+            }
+            
+            this.neighborsMap.set(key, result);
+            processed++;
+            if (processed % 10000 === 0) {
+                console.log(`Обработано ${processed} ячеек...`);
+            }
+        }
+        console.log('Предвычисление соседей завершено');
+    }
+    
     getNeighbors(cellKey) {
-        const cellIndex = this.cellIndexMap.get(cellKey);
-        if (cellIndex === undefined) return [];
-        
-        const cell = this.gridData[cellIndex];
-        const [lat, lng] = cell.center;
-        
-        const maxDistance = 0.0002;
-        const candidates = [];
-        
-        for (let [otherKey, otherIndex] of this.cellIndexMap) {
-            if (otherKey === cellKey) continue;
-            
-            const otherCell = this.gridData[otherIndex];
-            const [otherLat, otherLng] = otherCell.center;
-            
-            const latDiff = Math.abs(otherLat - lat);
-            const lngDiff = Math.abs(otherLng - lng);
-            const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
-            
-            if (distance < maxDistance && distance > 0.00001) {
-                candidates.push({
-                    key: otherKey,
-                    latDiff: latDiff,
-                    lngDiff: lngDiff,
-                    distance: distance
-                });
-            }
-        }
-        
-        candidates.sort((a, b) => a.distance - b.distance);
-        
-        const result = [];
-        const directions = { north: null, south: null, east: null, west: null };
-        
-        for (let candidate of candidates) {
-            const { key, latDiff, lngDiff } = candidate;
-            const otherCell = this.gridData[this.cellIndexMap.get(key)];
-            const [otherLat, otherLng] = otherCell.center;
-            
-            if (latDiff > lngDiff * 2) {
-                if (otherLat > lat && !directions.north) {
-                    directions.north = key;
-                    result.push(key);
-                } else if (otherLat < lat && !directions.south) {
-                    directions.south = key;
-                    result.push(key);
-                }
-            } else if (lngDiff > latDiff * 2) {
-                if (otherLng > lng && !directions.east) {
-                    directions.east = key;
-                    result.push(key);
-                } else if (otherLng < lng && !directions.west) {
-                    directions.west = key;
-                    result.push(key);
-                }
-            }
-            
-            if (result.length >= 4) break;
-        }
-        
-        return result;
+        // Используем предвычисленных соседей
+        return this.neighborsMap.get(cellKey) || [];
     }
     
     computeIgniteTimes() {
@@ -205,8 +232,8 @@ class FireSpreadSimulator {
         
         for (let [key, cellIndex] of this.cellIndexMap) {
             const cell = this.gridData[cellIndex];
-            const center = L.latLng(cell.center[0], cell.center[1]);
             const bounds = L.latLngBounds(cell.bounds);
+            const center = bounds.getCenter();
             
             const intersectsLine = this.lineIntersectsRectangle(this.fireLinePoints, bounds);
             const isInside = this.isPointInPolygon(center, closedPolygon);
@@ -214,7 +241,6 @@ class FireSpreadSimulator {
             if (intersectsLine) {
                 this.igniteTimeMap.set(key, 0);
                 priorityQueue.push({ key: key, igniteTime: 0 });
-                visited.add(key);
             } else if (isInside) {
                 this.igniteTimeMap.set(key, -Infinity);
             } else {
@@ -230,15 +256,20 @@ class FireSpreadSimulator {
             const currentIgniteTime = current.igniteTime;
             
             if (visited.has(currentKey)) {
-                if (current.igniteTime > this.igniteTimeMap.get(currentKey)) {
-                    continue;
-                }
+                continue;
+            }
+            
+            const storedIgniteTime = this.igniteTimeMap.get(currentKey);
+            if (currentIgniteTime > storedIgniteTime) {
+                continue;
             }
             
             visited.add(currentKey);
             
             const burnTime = this.burnTimeMap.get(currentKey);
-            if (burnTime === null || burnTime === undefined || burnTime <= 0) continue;
+            if (burnTime === null || burnTime === undefined || burnTime <= 0) {
+                continue;
+            }
             
             const neighbors = this.getNeighbors(currentKey);
             
@@ -248,6 +279,11 @@ class FireSpreadSimulator {
                 const neighborIgniteTime = this.igniteTimeMap.get(neighborKey);
                 if (neighborIgniteTime === -Infinity) continue;
                 
+                const neighborBurnTime = this.burnTimeMap.get(neighborKey);
+                if (neighborBurnTime === null || neighborBurnTime === undefined || neighborBurnTime <= 0) {
+                    continue;
+                }
+                
                 const newIgniteTime = currentIgniteTime + burnTime;
                 
                 if (newIgniteTime < neighborIgniteTime) {
@@ -255,11 +291,14 @@ class FireSpreadSimulator {
                     
                     const existingIndex = priorityQueue.findIndex(item => item.key === neighborKey);
                     if (existingIndex >= 0) {
-                        priorityQueue[existingIndex].igniteTime = newIgniteTime;
+                        if (newIgniteTime < priorityQueue[existingIndex].igniteTime) {
+                            priorityQueue[existingIndex].igniteTime = newIgniteTime;
+                            priorityQueue.sort((a, b) => a.igniteTime - b.igniteTime);
+                        }
                     } else {
                         priorityQueue.push({ key: neighborKey, igniteTime: newIgniteTime });
+                        priorityQueue.sort((a, b) => a.igniteTime - b.igniteTime);
                     }
-                    priorityQueue.sort((a, b) => a.igniteTime - b.igniteTime);
                 }
             }
         }
@@ -310,5 +349,112 @@ class FireSpreadSimulator {
             burnedMask: burnedMask,
             unburnedMask: unburnedMask
         };
+    }
+    
+    // Новая функция для прогноза распространения огня
+    // На вход: текущая карта (burnedCells - Set индексов сгоревших ячеек), зона пожара (fireLinePoints), время прогноза (timeMinutes)
+    // На выход: Set индексов ячеек, которые будут под пожаром к этому времени
+    predictFireSpread(burnedCells, fireLinePoints, timeMinutes) {
+        const closedPolygon = [...fireLinePoints];
+        if (closedPolygon.length > 0 && 
+            (closedPolygon[0].lat !== closedPolygon[closedPolygon.length - 1].lat || 
+             closedPolygon[0].lng !== closedPolygon[closedPolygon.length - 1].lng)) {
+            closedPolygon.push(closedPolygon[0]);
+        }
+        
+        // Инициализация: помечаем ячейки на линии огня как горящие
+        const burningCells = new Set(); // Индексы горящих ячеек
+        const remainingBurnTime = new Map(); // Оставшееся время горения для каждой ячейки
+        let remainingTime = timeMinutes; // Оставшееся время прогноза
+        
+        // Находим ячейки на линии огня и внутри области
+        for (let [key, cellIndex] of this.cellIndexMap) {
+            const cell = this.gridData[cellIndex];
+            const bounds = L.latLngBounds(cell.bounds);
+            const center = bounds.getCenter();
+            
+            const intersectsLine = this.lineIntersectsRectangle(fireLinePoints, bounds);
+            const isInside = this.isPointInPolygon(center, closedPolygon);
+            
+            if (intersectsLine || isInside) {
+                if (!burnedCells.has(cellIndex)) {
+                    const burnTime = this.burnTimeMap.get(key);
+                    if (burnTime !== null && burnTime !== undefined && burnTime > 0) {
+                        burningCells.add(cellIndex);
+                        remainingBurnTime.set(cellIndex, burnTime);
+                    }
+                }
+            }
+        }
+        
+        // Основной цикл: находим ячейку, которая сгорит раньше всех, и распространяем огонь
+        while (remainingTime > 0 && burningCells.size > 0) {
+            // Находим ячейку с минимальным временем горения
+            let minBurnTime = Infinity;
+            let nextCellIndex = null;
+            
+            for (let cellIndex of burningCells) {
+                const burnTime = remainingBurnTime.get(cellIndex);
+                if (burnTime < minBurnTime) {
+                    minBurnTime = burnTime;
+                    nextCellIndex = cellIndex;
+                }
+            }
+            
+            // Если минимальное время горения больше оставшегося времени, останавливаемся
+            if (minBurnTime > remainingTime || nextCellIndex === null) {
+                break;
+            }
+            
+            // Помечаем ячейку как сгоревшую
+            burningCells.delete(nextCellIndex);
+            burnedCells.add(nextCellIndex);
+            remainingBurnTime.delete(nextCellIndex);
+            
+            // Вычитаем время горения этой ячейки из оставшегося времени
+            remainingTime -= minBurnTime;
+            
+            // Вычитаем это время из всех остальных горящих ячеек
+            for (let cellIndex of burningCells) {
+                const currentTime = remainingBurnTime.get(cellIndex);
+                remainingBurnTime.set(cellIndex, currentTime - minBurnTime);
+            }
+            
+            // Находим соседей сгоревшей ячейки и добавляем их в горящие
+            const cellKey = this.getCellKeyFromIndex(nextCellIndex);
+            if (cellKey) {
+                const neighbors = this.getNeighbors(cellKey);
+                
+                for (let neighborKey of neighbors) {
+                    const neighborIndex = this.cellIndexMap.get(neighborKey);
+                    if (neighborIndex !== undefined && 
+                        !burnedCells.has(neighborIndex) && 
+                        !burningCells.has(neighborIndex)) {
+                        
+                        const neighborBurnTime = this.burnTimeMap.get(neighborKey);
+                        if (neighborBurnTime !== null && 
+                            neighborBurnTime !== undefined && 
+                            neighborBurnTime > 0) {
+                            
+                            burningCells.add(neighborIndex);
+                            remainingBurnTime.set(neighborIndex, neighborBurnTime);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Возвращаем все сгоревшие ячейки (включая изначально горящие)
+        return burnedCells;
+    }
+    
+    // Вспомогательная функция для получения ключа ячейки по индексу
+    getCellKeyFromIndex(cellIndex) {
+        for (let [key, index] of this.cellIndexMap) {
+            if (index === cellIndex) {
+                return key;
+            }
+        }
+        return null;
     }
 }
